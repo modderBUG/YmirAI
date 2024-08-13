@@ -27,7 +27,7 @@ def qwen_chat(prompts):
     url = random.choice(url_list)
     res = requests.post(url, json=data, headers=headers)
 
-    # print(res.json())
+    print(res.json())
 
     try:
         print(f"INFO:{res.json()['choices'][0]['message']['content']}")

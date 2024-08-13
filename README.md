@@ -1,22 +1,22 @@
 # YmirAI
-构建世界树公司的智能体项目
+构建世界树公司的智能体项目。
+尝试和各种虚拟角色进行语音聊天吧~
 
 # 效果演示
 
-```html
-<iframe frameborder="no" border="0" marginwidth="0" marginheight="0" width=330 height=86 src="cosy_app/character/changchun/2ynqkip0d01q7imqx0crvebanywu8ld.mp3">音频文件无法显示</iframe>
+| 角色                                  | 原声音                                                                                                           | AI合成                                                                    |
+|-------------------------------------|---------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------|
+| ![逸仙](assert/85px-yixian.jpg)<br>逸仙 | [点击播放音频](http://si5c7yq6z.hn-bkt.clouddn.com/rwertoem4id64mao2x9hcs96l4tstnu.mp3)<br/>嗯，对女性做出这样的举动，想必指挥官也做好承担后果的心理准备了吧？ | [点我播放音频](http://si5c7yq6z.hn-bkt.clouddn.com/yixian.wav)</br>指挥官，需要帮忙吗。...呵，让我来帮指挥官大人缓解作战的疲劳吧...呵呵。 |
+|                                     |                                                                                                               |                                                                         |
+|                                     |                                                                                                               |                                                                         |
 
-<audio src="cosy_app/character/changchun/2ynqkip0d01q7imqx0crvebanywu8ld.mp3">音频文件无法显示</audio>
-```
+> 外链资源由[七牛云](https://portal.qiniu.com/kodo/bucket/resource-v2?bucketName=modderbug)提供
 
+Demo演示
 
-
-| 角色 | 原声音                                                                                                           | AI合成                                                                    |
-|----|---------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------|
-| 逸仙 | [点击播放音频](cosy_app/character/yixian/rwertoem4id64mao2x9hcs96l4tstnu.mp3)<br/>嗯，对女性做出这样的举动，想必指挥官也做好承担后果的心理准备了吧？ | [点我播放音频](assert/yixian.html)</br>指挥官，需要帮忙吗。...呵，让我来帮指挥官大人缓解作战的疲劳吧...呵呵。 |
-|    |                                                                                                               |                                                                         |
-|    |                                                                                                               |                                                                         |
-
+![占位符](assert/xx)
+![占位符](assert/xx)
+![占位符](assert/xx)
 
 # TODO
 - [x] 完成项目框架
