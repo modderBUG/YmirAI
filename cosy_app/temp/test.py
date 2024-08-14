@@ -1,7 +1,7 @@
 import random
 import requests
 import json
-from configs.config_prompts import prompts_kesya
+from cosy_app.configs.config_prompts import prompts_kesya
 
 def qwen_chat(prompts):
     data = {
@@ -22,12 +22,13 @@ def qwen_chat(prompts):
     # url = "http://www.modderbug.cn:8212/v1/chat/completions"
 
     # url_list = ["http://10.8.13.92:8808/v1/chat/completions","http://10.8.13.92:8808/v1/chat/completions"]
-    url_list = ["http://74.120.172.183:8216/v1/chat/completions","http://74.120.172.183:8216/v1/chat/completions"]
+    # url_list = ["http://74.120.172.183:8216/v1/chat/completions","http://74.120.172.183:8216/v1/chat/completions"]
+    url_list = ["http://49.232.24.59:80/v1/chat/completions"]
 
     url = random.choice(url_list)
     res = requests.post(url, json=data, headers=headers)
 
-    print(res.json())
+    print(res.text)
 
     try:
         print(f"INFO:{res.json()['choices'][0]['message']['content']}")
@@ -54,12 +55,12 @@ if __name__ == '__main__':
     ]
     bot_text = qwen_chat(message)
 
-    message.append({"role":"assistant","content":bot_text})
-
-
-    while True:
-        user_input = input()
-        message.append({"role":"user","content":user_input})
-        bot_text = qwen_chat(message)
-        message.append({"role": "assistant", "content": bot_text})
-
+    # message.append({"role":"assistant","content":bot_text})
+    #
+    #
+    # while True:
+    #     user_input = input()
+    #     message.append({"role":"user","content":user_input})
+    #     bot_text = qwen_chat(message)
+    #     message.append({"role": "assistant", "content": bot_text})
+    #

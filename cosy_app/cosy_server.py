@@ -126,7 +126,7 @@ def get_sound():
         return response_entity(500, f"服务器压力达到极限，亲稍后再试。tips:{str(e)}")
 
 
-@app.route('/')
+@app.route('/api/v1/characters')
 # @token_required
 def root_path():
     names = os.listdir(character_base_dir)
@@ -153,7 +153,7 @@ def post_chat():
         return response_entity(500, f'服务器内部错误！请重试！')
 
 
-@app.route('/login', methods=['POST'])
+@app.route('/api/v1/login', methods=['POST'])
 def login():
     """
     哈希算法得到token。查库匹配密码。设置token缓存时间。
