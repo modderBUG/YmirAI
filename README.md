@@ -32,13 +32,16 @@ Demo演示
 
  
 # 项目部署
-1. 克隆项目[CosyVoice](https://github.com/FunAudioLLM/CosyVoice)，并下载相关模型
-2. 把本项目丢尽CosyVoice目录
+1. 下载[CosyVoice](https://github.com/FunAudioLLM/CosyVoice)项目的模型`CosyVoice-300M-Instruct`
+2. 将模型丢尽项目文件夹`YmirAI/cosy_app/pretrained_models/.`
+ + 例如[CosyVoice-300M-xxx](cosy_app/pretrained_models/CosyVoice-300M-Instruct)
 ```commandline
-|- CosyVoice/
-    |- YmirAI/
-    |- Pretrain/
-    |- ...
+|- YmirAI/
+    |- cosy_app/
+        |- pretrained_models/
+            |- CosyVoice-300M-Instruct *
+        |- cosy_server.py
+        |- ...
 ```
 3. 启动qwen2-7b大模型
 ```commandline

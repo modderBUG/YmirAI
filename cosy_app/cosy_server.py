@@ -79,6 +79,7 @@ def response_entity(code=200, msg="ok", data=None):
 
 
 @app.route('/api/v1/voice_generate', methods=['POST'])
+# @token_required
 def predict():
     try:
         body = request.get_json()
@@ -109,6 +110,7 @@ def predict():
 
 
 @app.route('/api/v1/sound', methods=['POST'])
+# @token_required
 def get_sound():
     try:
         body = request.get_json()
@@ -125,6 +127,7 @@ def get_sound():
 
 
 @app.route('/')
+# @token_required
 def root_path():
     names = os.listdir(character_base_dir)
     res = {i: _read_json(os.path.join(character_base_dir, i, "config.json")) for i in names}
@@ -152,6 +155,11 @@ def post_chat():
 
 @app.route('/login', methods=['POST'])
 def login():
+    """
+    哈希算法得到token。查库匹配密码。设置token缓存时间。
+    :return: 返回一个token
+    """
+    # 从nginx限制调用次数，因此不需要进行验证码登录。因为是明文传输密码，因此必须开启https。
     try:
         data = request.json
         username = data.get('username')
