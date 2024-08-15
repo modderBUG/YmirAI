@@ -4,6 +4,7 @@ import logging
 import traceback
 from configs.config_prompts import prompts_kesya
 from configs.project_config import *
+from databases.sqllite_connection import ConvService
 
 logger = logging.getLogger("cosy_server")
 
@@ -60,7 +61,14 @@ def stream_chat(messages):
         logger.error(f"input:{data}\noutput:{response}\n{str(e)}\ntraceback:{traceback.format_exc()}")
 
 
-def with_char_stream_chat(history, query):
+def insert_dialog(uid,user_text,bot_text):
+    try:
+        db = ConvService()
+        db.insert_message()
+    except Exception as e:
+        logger.error(f"{str(e)},{traceback.format_exc()}")
+
+def with_char_stream_chat(history, query, uid):
     """
     根据query生成新的clause
     :return:
@@ -80,6 +88,9 @@ def with_char_stream_chat(history, query):
     new_his = [query, ""]
     history.append(new_his)
 
+
+    bot_message = ""
+
     for i in stream_chat(message):
 
         if i == "data: [DONE]\n":
@@ -91,11 +102,14 @@ def with_char_stream_chat(history, query):
             "output": i,
             "history": history
         }
+        bot_message+=i
 
-        new_data_str = f"data: {response_stream(data=res)}\n"
+        new_data_str = f"data: {response_stream(data=res)}\n\n"
         # 逐个返回新的 JSON 数据
         yield new_data_str
-    yield "data: [DONE]\n"
+
+
+    yield "data: [DONE]\n\n"
 
 
 if __name__ == '__main__':

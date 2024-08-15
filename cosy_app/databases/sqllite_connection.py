@@ -14,7 +14,7 @@ def verify_password(stored_password, provided_password):
 class Database:
     def __init__(self):
         """ 初始化数据库连接 """
-        db_file = "chatbot.db"
+        db_file = "D:\projects\pythonproject\YmirAI\cosy_app\databases\chatbot.db"
         self.connection = None
         try:
             self.connection = sqlite3.connect(db_file)
@@ -51,7 +51,9 @@ class Database:
     def fetch_all(self, query, params=()):
         """ 获取所有结果 """
         cursor = self.connection.cursor()
+        print(query,params)
         cursor.execute(query, params)
+
         return cursor.fetchall()
 
 class UserService(Database):
@@ -73,9 +75,14 @@ class UserService(Database):
             return False
 
     def get_uid_by_uname(self, uname):
-        query = """SELECT "uid", "username", "nickname", "password", "email", "created_at", "updated_at" FROM "Users" WHERE  "username"=?;"""
-        res = self.fetch_all(query, (uname,))
-        return res[0][0]
+        try:
+            query = """SELECT "uid", "username", "nickname", "password", "email", "created_at", "updated_at" FROM "Users" WHERE  "username"=?;"""
+            res = self.fetch_all(query, (uname,))
+            return res[0][0]
+        except Exception as e:
+            print(e)
+            print(query)
+            return None
 
     def get_info_by_uid(self, uid):
         query = """SELECT "uid", "username", "nickname",  "email", "created_at", "updated_at" FROM "Users" WHERE  "uid"=?;"""

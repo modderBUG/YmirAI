@@ -146,7 +146,11 @@ def post_chat():
         req_data = request.get_json()
         query = req_data.get("query", "")
         history = req_data.get("history", [])
-        return Response(with_char_stream_chat(history, query), mimetype='text/event-stream')
+
+        token = request.headers['Authorization'].split(" ")[1]
+        uid = cache.get(token)
+
+        return Response(with_char_stream_chat(history, query,uid), mimetype='text/event-stream')
     except Exception as e:
         logger.error(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         logger.error(traceback.format_exc())
