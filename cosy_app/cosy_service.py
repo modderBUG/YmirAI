@@ -68,7 +68,7 @@ def insert_dialog(uid,user_text,bot_text):
     except Exception as e:
         logger.error(f"{str(e)},{traceback.format_exc()}")
 
-def with_char_stream_chat(history, query, uid):
+def with_char_stream_chat(history, query):
     """
     根据query生成新的clause
     :return:

@@ -119,6 +119,32 @@ class ConvService(Database):
 
 
 
+    def update_summary_by_convid(self,summary,convid,uid):
+        sql = """UPDATE "Conversations" SET "summary"=? WHERE  "convID"=? and "uid"=?;"""
+        res = self.execute_query(sql, (summary,convid,uid))
+        return res
+
+    def update_conv_by_convid(self,conv_text,convid,uid):
+        sql = """UPDATE "Conversations" SET "conv"=? WHERE  "convID"=? and "uid"=?;"""
+        res = self.execute_query(sql, (conv_text,convid,uid))
+        return res
+    def get_conv_by_convid(self,convid,uid):
+        sql = """SELECT "convID", "conv" FROM "Conversations" WHERE  "convID"=? and "uid"=?;"""
+        res = self.fetch_all(sql, (convid,uid))
+        return res
+
+    def generate_convid(self, uid, summary):
+        try:
+            sql = """INSERT INTO "Conversations" ("uid", "summary") VALUES (?, ?);"""
+            cursor = self.connection.cursor()
+            cursor.execute(sql, (uid,summary))
+            self.connection.commit()
+            print("Query executed successfully.")
+            return cursor.lastrowid  # 返回插入的行 ID
+        except Error as e:
+            print(f"Error executing query: {e}")
+            return None  # 在发生错误时返回 None
+
 
 # SQL 表创建语句
 create_users_table = """
@@ -165,6 +191,43 @@ CREATE TABLE IF NOT EXISTS ChatRecords (
 );
 """
 
+
+
+"""
+[
+    {
+        "speaker": "human",
+        "speech": "你好"
+    },
+    {
+        "idx": 0,
+        "loading": false,
+        "speaker": "ai",
+        "suitable": [
+            0
+        ],
+        "speeches": [
+            "嗨，阿顺，有什么新的任务或者挑战吗？或者只是想聊聊天？不管怎样，我都在这里，准备好为你提供帮助或陪伴了。"
+        ]
+    },
+    {
+        "speaker": "human",
+        "speech": "你好啊哈哈哈"
+    },
+    {
+        "idx": 0,
+        "loading": false,
+        "speaker": "ai",
+        "suitable": [
+            0
+        ],
+        "speeches": [
+            "哈哈，你好，阿顺！有时候我也会觉得生活中的小乐趣比任何任务都来得重要。所以，不论是工作还是轻松一刻，都欢迎来找我聊聊。"
+        ]
+    }
+]
+
+"""
 # 示例用法
 if __name__ == "__main__":
     db = Database()
@@ -200,3 +263,8 @@ if __name__ == "__main__":
     # cs.insert_message(1,"aaaa","vvvvv",4)
     # print(cs.find_msg_by_convid(1))
     # print(cs.get_all_conversation_by_uid(3))
+
+    # print(cs.generate_convid(3,""))
+    # print(cs.update_summary_by_convid("bbb",4,3))
+
+    print(cs.get_conv_by_convid(4,3))
