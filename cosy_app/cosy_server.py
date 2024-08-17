@@ -10,12 +10,10 @@ from flask_caching import Cache
 import json
 import numpy as np
 import io
-import requests
 import logging
-from cosy_service import _read_json, with_char_stream_chat, stream_chat
-from configs.project_config import TOKEN_EXPIRATION_TIME
+from cosy_service import _read_json, with_char_stream_chat
 from databases.sqllite_connection import UserService,ConvService
-from lmm_prompts.qiniu_upload import upload_file_to_qiniu
+from qiniu_upload import upload_file_to_qiniu
 
 app = Flask(__name__)
 
@@ -115,7 +113,6 @@ def _get_voice(text,charactor):
 
 
 @app.route('/api/v1/voice_generate', methods=['POST'])
-# @token_required
 def predict():
     try:
         body = request.get_json()
@@ -146,8 +143,42 @@ def predict():
         return response_entity(500, f"服务器压力达到极限，亲稍后再试。tips:{str(e)}")
 
 
+
+
+@app.route('/api/v1/make_voice', methods=['POST'])
+def self_making_voice():
+    try:
+
+        user_text = request.form.get("text")
+        prompts_text = request.form.get("prompts_text")
+        self_voice = request.files.get("file")
+
+
+        if user_text is None or self_voice is None:
+            raise Exception(f'没有传入TTS文本、或者角色为空。\n可选角色{character.keys()}')
+
+
+        prompt_speech_16k = load_wav(self_voice.stream.read(), 16000)
+
+        output = cosyvoice.inference_zero_shot(user_text, prompts_text, prompt_speech_16k)
+
+        audio_bytes = io.BytesIO()
+
+        # 将生成的语音数据保存到 BytesIO 对象中
+        torchaudio.save(audio_bytes, output['tts_speech'], 22050, format='wav')
+
+        # 重置 BytesIO 对象的指针到开始位置
+        audio_bytes.seek(0)
+
+        # 返回音频数据而不保存到本地
+        return send_file(audio_bytes, mimetype='audio/wav', as_attachment=True,
+                         download_name=f'{str(time.time())[:10]}.wav')
+    except Exception as e:
+        print(str(e), traceback.format_exc())
+        return response_entity(500, f"服务器压力达到极限，亲稍后再试。tips:{str(e)}")
+
+
 @app.route('/api/v1/sound', methods=['POST'])
-# @token_required
 def get_sound():
     try:
         body = request.get_json()
