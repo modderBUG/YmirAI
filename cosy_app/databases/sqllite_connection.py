@@ -1,7 +1,7 @@
 import sqlite3
 from sqlite3 import Error
 from werkzeug.security import generate_password_hash, check_password_hash
-
+import os
 # 加密密码
 def hash_password(password):
     return generate_password_hash(password)
@@ -14,7 +14,9 @@ def verify_password(stored_password, provided_password):
 class Database:
     def __init__(self):
         """ 初始化数据库连接 """
-        db_file = "D:\projects\pythonproject\YmirAI\cosy_app\databases\chatbot.db"
+        db_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chatbot.db')
+        print(db_file)
+        # db_file = "D:\projects\pythonproject\YmirAI\cosy_app\databases\chatbot.db"
         self.connection = None
         try:
             self.connection = sqlite3.connect(db_file)

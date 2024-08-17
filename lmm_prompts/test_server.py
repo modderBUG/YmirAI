@@ -1,5 +1,6 @@
 import time
 
+import requests
 from flask import Flask, Response, request
 from flask_cors import CORS
 from cosy_service import with_char_stream_chat
@@ -29,11 +30,10 @@ def get_uid_by_token(request):
         # 从请求头中获取 Token
         if 'Authorization' in request.headers:
             token = request.headers['Authorization'].split(" ")[1]  # 假设格式为 "Bearer <token>"
-        print(request.headers)
+        # print(request.headers)
 
         if not token:
             return None
-
 
         cached_user_id = cache.get(token)
         print(f"get {token} {cached_user_id}")
@@ -94,15 +94,14 @@ def get_conv(cid):
 
         db = ConvService()
 
-        res = db.get_conv_by_convid(cid,uid)
-        if len(res)==0: return response_entity(400, f'不存在')
+        res = db.get_conv_by_convid(cid, uid)
+        if len(res) == 0: return response_entity(400, f'不存在')
 
         return response_entity(data=json.loads(res[0][1]))
     except Exception as e:
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
-
 
 
 @app.route('/api/v1/summary', methods=['POST'])
@@ -141,6 +140,63 @@ def post_summary():
         db.update_summary_by_convid(summary, conv_id, uid)
         res["summary"] = summary
         return response_entity(data=res)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+
+    finally:
+        if db is not None:
+            db.close()
+
+from qiniu_upload import upload_file_to_qiniu
+def _get_voice(text,charactor):
+    res = requests.post("http://49.232.24.59/api/v1/voice_generate",json={
+        "text":text,
+        "character":charactor
+    })
+    filename = str(hash(text))+".wav"
+    res = upload_file_to_qiniu(res.content,filename)
+    path = res["key"]
+    return "http://si5c7yq6z.hn-bkt.clouddn.com/"+path
+
+
+
+@app.route('/api/v1/get_voice', methods=['POST'])
+def get_voice_and_save_conv():
+    """
+    分类 + 大纲 -> 条款生成接口。
+    当query有字段，则为条款重新生成接口。否则为第一次生成。
+    重新生成：根据history和query生成新的条款。
+    """
+    db = None
+    try:
+        data = request.get_json()
+
+        conv = data.get("conversation", None)
+        speeches_id = data.get("speechesId", None)
+        conv_id = data.get("convid", None)
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = ConvService()
+        db.update_conv_by_convid(json.dumps(conv), conv_id, uid)
+
+        bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
+
+        url = _get_voice(bot_message,"yixian")
+        print("url:",url)
+
+        if "voice" in conv[len(conv) - 1]:
+            conv[len(conv) - 1]["voice"].append(url)
+        else:
+            conv[len(conv) - 1]["voice"] = [url]
+        db.update_conv_by_convid(json.dumps(conv), conv_id, uid)
+
+        return response_entity(data=conv)
     except Exception as e:
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
