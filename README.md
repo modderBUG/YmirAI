@@ -1,8 +1,12 @@
+
+
+![yumiricon.jpg](assert/yumiricon.jpg)
 # YmirAI
 构建世界树公司的智能体项目。
 尝试和各种虚拟角色进行语音聊天吧~
 
 + 本项目代码完全开源，项目训练数据得到许可后可开源。
+
 
 # 效果演示
 
@@ -68,12 +72,13 @@ python cosy_server.py
 
 
 # 赞助
-- 请我喝咖啡
-
-
+- 请我喝咖啡，请注意填写id，将会出现在鸣谢列表
 
 | 微信                                   |                          |
 |--------------------------------------|--------------------------|
 | ![占位符](assert/code1.jpg) | ![占位符](assert/code2.jpg) |
 
 
+# 鸣谢
+- [chatai-vue](https://github.com/GPTKing/chatai-vue)
+- 用户：@zjbshk 
