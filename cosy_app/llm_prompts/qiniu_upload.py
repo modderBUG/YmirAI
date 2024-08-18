@@ -19,6 +19,7 @@ def upload_file_to_qiniu(data,filename):
     return ret
 
 import requests
+
 def test_get_voice(text,charactor):
     res = requests.post("http://49.232.24.59/api/v1/voice_generate",json={
         "text":text,
