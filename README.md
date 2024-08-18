@@ -8,6 +8,21 @@
 + 本项目代码完全开源，项目训练数据得到许可后可开源。
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # 效果演示
 
 | 角色                                  | 原声音                                                                                                                                                                                                                                                                                                                        | AI合成                                                                                                                                                 | AI合成2                                                                                                                                            |
@@ -41,7 +56,7 @@ Demo演示
 
  
 # 项目部署
-1. 下载[CosyVoice](https://github.com/FunAudioLLM/CosyVoice)项目的模型`CosyVoice-300M-Instruct`
+1. 下载[CosyVoice](https://github.com/FunAudioLLM/CosyVoice)项目的模型`CosyVoice-300M-Instruct` 和`CosyVoice-ttsfrd`,【[CosyVoice](https://github.com/FunAudioLLM/CosyVoice)】
 2. 将模型丢尽项目文件夹`YmirAI/cosy_app/pretrained_models/.`
  + 例如[CosyVoice-300M-xxx](cosy_app/pretrained_models/CosyVoice-300M-Instruct)
 ```commandline
@@ -68,7 +83,7 @@ python cosy_server.py
 ```
 
 # 体验地址
-+ 如果需要体验地址，请加入我的微信群私信我。纯为爱发电，真顶不住黑客攻击和手欠的网络安全小伙伴。
++ 如果需要体验地址，请加入我的微信群私信我。纯为爱发电，真顶不住黑客攻击和网络安全小伙伴压力测试。
 
 
 # 赞助
