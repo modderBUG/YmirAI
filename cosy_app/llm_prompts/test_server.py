@@ -1,7 +1,7 @@
 import time
 
 import requests
-from flask import Flask, Response, request
+from flask import Flask, Response, request,send_file
 from flask_cors import CORS
 from cosy_service import with_char_stream_chat
 import json
@@ -252,6 +252,35 @@ def get_saved_voice2():
         if db is not None:
             db.close()
 
+
+@app.route('/api/v1/make_voice', methods=['POST'])
+def self_making_voice():
+    """
+    自定义语音合成接口。
+    :return:
+    """
+    try:
+
+        user_text = request.form.get("text")
+        prompts_text = request.form.get("prompts_text")
+        self_voice = request.files.get("file")
+
+        print(user_text)
+        print(prompts_text)
+        print(self_voice)
+
+        f = open(r'F:\PycharmProjects\YmirAI\cosy_app\character\huajia2\b6cxl0z7w0j878nwkf2b57vaa2rbv5z.mp3',"rb")
+
+
+
+        return  send_file(f, mimetype='audio/wav', as_attachment=True,
+                         download_name=f'{str(time.time())[:10]}.wav')
+
+
+
+
+    except Exception as e:
+        print(e)
 
 @app.route('/api/v1/voices', methods=['GET'])
 def get_saved_voice():
