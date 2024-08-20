@@ -154,6 +154,13 @@ class AudioService(Database):
         query = """INSERT INTO "audio_files" ("uid", "file_name", "mime_type", "prompts_text", "text", "audio_data")  VALUES (?, ?, ?,?,?,?);"""
         self.execute_query(query, (uid, filename, mime_type,prompts_text,text,audio_data))
 
+
+
+
+    def delete_audio(self, id):
+        query = """DELETE FROM "audio_files" WHERE  "id"=?;"""
+        self.execute_query(query, (id,))
+
     def get_all_by_uid(self,uid):
         sql = """SELECT "id", "uid", "file_name", "mime_type", "prompts_text", "text", "upload_date", "audio_data" FROM "audio_files" WHERE  "uid"=?;"""
         res = self.fetch_all(sql, (uid,))

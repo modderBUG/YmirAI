@@ -305,16 +305,45 @@ def get_saved_voice():
 def get_voice_data(id):
     db = None
     try:
+
         uid = get_uid_by_token(request)
         print(f"uid:{uid}")
         if uid is None: return response_entity(401, f'未授权')
 
         db = AudioService()
 
+        del_flag = request.args.get("delete", None)
+        if del_flag:
+            db.delete_audio(id)
+            return response_entity(data=id)
+
+
         res = db.get_data_by_id(id)
         if len(res) == 0: return response_entity(400, f'不存在')
 
         return response_entity(data=res)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+    finally:
+        db.close()
+
+@app.route('/api/v1/voice', methods=['POST'])
+def save_voice_data():
+    db = None
+    try:
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None: return response_entity(401, f'未授权')
+
+        user_text = request.form.get("text")
+        prompts_text = request.form.get("prompts_text")
+        self_voice = request.files.get("file")
+
+        db = AudioService()
+        db.insert_audio(uid=uid,filename=self_voice.filename,mime_type="audio/wav",prompts_text=prompts_text,text=user_text,audio_data=self_voice.stream.read())
+        return response_entity(data="ok")
     except Exception as e:
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
