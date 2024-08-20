@@ -7,7 +7,7 @@ from cosy_service import with_char_stream_chat
 import json
 import traceback
 from flask_caching import Cache
-from databases.sqllite_connection import UserService, ConvService
+from databases.sqllite_connection import UserService, ConvService,AudioService
 
 app = Flask(__name__)
 
@@ -149,7 +149,7 @@ def post_summary():
         if db is not None:
             db.close()
 
-from qiniu_upload import upload_file_to_qiniu
+from llm_prompts.qiniu_upload import upload_file_to_qiniu
 def _get_voice(text,charactor):
     res = requests.post("http://49.232.24.59/api/v1/voice_generate",json={
         "text":text,
@@ -206,6 +206,92 @@ def get_voice_and_save_conv():
         if db is not None:
             db.close()
 
+
+
+@app.route('/api/v1/voice2', methods=['POST'])
+def get_saved_voice2():
+    """
+    分类 + 大纲 -> 条款生成接口。
+    当query有字段，则为条款重新生成接口。否则为第一次生成。
+    重新生成：根据history和query生成新的条款。
+    """
+    db = None
+    try:
+        data = request.get_json()
+
+        conv = data.get("conversation", None)
+        speeches_id = data.get("speechesId", None)
+        conv_id = data.get("convid", None)
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = ConvService()
+        db.update_conv_by_convid(json.dumps(conv), conv_id, uid)
+
+        bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
+
+        url = _get_voice(bot_message,"yixian")
+        print("url:",url)
+
+        if "voice" in conv[len(conv) - 1]:
+            conv[len(conv) - 1]["voice"].append(url)
+        else:
+            conv[len(conv) - 1]["voice"] = [url]
+        db.update_conv_by_convid(json.dumps(conv), conv_id, uid)
+
+        return response_entity(data=conv)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+
+    finally:
+        if db is not None:
+            db.close()
+
+
+@app.route('/api/v1/voices', methods=['GET'])
+def get_saved_voice():
+    try:
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = AudioService()
+
+        res = db.get_all_by_uid(uid)
+        if len(res) == 0: return response_entity(400, f'不存在')
+
+        return response_entity(data=res)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+
+@app.route('/api/v1/voice/<id>', methods=['GET'])
+def get_voice_data(id):
+    db = None
+    try:
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = AudioService()
+
+        res = db.get_data_by_id(id)
+        if len(res) == 0: return response_entity(400, f'不存在')
+
+        return response_entity(data=res)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+    finally:
+        db.close()
 
 @app.route('/api/v1/login', methods=['POST'])
 def login():

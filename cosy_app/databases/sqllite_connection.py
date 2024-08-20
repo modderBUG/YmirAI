@@ -2,6 +2,7 @@ import sqlite3
 from sqlite3 import Error
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import base64
 # 加密密码
 def hash_password(password):
     return generate_password_hash(password)
@@ -148,6 +149,33 @@ class ConvService(Database):
             return None  # 在发生错误时返回 None
 
 
+class AudioService(Database):
+    def insert_audio(self, uid, filename, mime_type,prompts_text,text,audio_data):
+        query = """INSERT INTO "audio_files" ("uid", "file_name", "mime_type", "prompts_text", "text", "audio_data")  VALUES (?, ?, ?,?,?,?);"""
+        self.execute_query(query, (uid, filename, mime_type,prompts_text,text,audio_data))
+
+    def get_all_by_uid(self,uid):
+        sql = """SELECT "id", "uid", "file_name", "mime_type", "prompts_text", "text", "upload_date", "audio_data" FROM "audio_files" WHERE  "uid"=?;"""
+        res = self.fetch_all(sql, (uid,))
+
+        res = [ {
+            "id":item[0],
+            "uid":item[1],
+            "file_name":item[2],
+            "mime_type":item[3],
+            "prompts_text":item[4],
+            "text":item[5],
+            "upload_date":item[6],
+        } for item in res ]
+        return res
+
+    def get_data_by_id(self,id):
+        sql = """SELECT  "audio_data" FROM "audio_files" WHERE  "id"=?;"""
+        res = self.fetch_all(sql, (id,))
+        audio_base64 = base64.b64encode(res[0][0]).decode('utf-8')
+        return audio_base64
+
+
 # SQL 表创建语句
 create_users_table = """
 CREATE TABLE IF NOT EXISTS Users (
@@ -182,16 +210,37 @@ CREATE TABLE IF NOT EXISTS Conversations (
 """
 
 create_chat_records_table = """
-CREATE TABLE IF NOT EXISTS ChatRecords (
-    recordID INTEGER PRIMARY KEY AUTOINCREMENT,
-    convID INTEGER,
-    user_text TEXT,
-    bot_text TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    summary TEXT,
-    FOREIGN KEY (convID) REFERENCES Conversations(convID) ON DELETE CASCADE
-);
+CREATE TABLE "ChatRecords" (
+	"recordID" INTEGER NOT NULL,
+	"convID" INTEGER NULL,
+	"user_idx" TINYINT NOT NULL,
+	"user_texts" TEXT NULL,
+	"bot_texts" TEXT NULL,
+	"bot_idx" INTEGER NOT NULL,
+	"suitable" TEXT NULL,
+	"voice" TEXT NULL,
+	"timestamp" DATETIME NULL,
+	PRIMARY KEY ("recordID"),
+	CONSTRAINT "0" FOREIGN KEY ("convID") REFERENCES "Conversations" ("convID") ON UPDATE NO ACTION ON DELETE CASCADE
+)
+;
 """
+
+create_audio_files_table ="""
+CREATE TABLE audio_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid INTEGER NOT NULL,
+    file_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    prompts_text TEXT NOT NULL,
+    text TEXT NOT NULL,
+    upload_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    audio_data BLOB NOT NULL,
+    CONSTRAINT "0" FOREIGN KEY ("uid") REFERENCES "Users" ("uid") ON UPDATE NO ACTION ON DELETE CASCADE
+);
+
+"""
+
 
 
 
@@ -269,4 +318,14 @@ if __name__ == "__main__":
     # print(cs.generate_convid(3,""))
     # print(cs.update_summary_by_convid("bbb",4,3))
 
-    print(cs.get_conv_by_convid(4,3))
+    # print(cs.get_conv_by_convid(4,3))
+
+
+    ass = AudioService()
+
+    # with open(r'D:\projects\pythonproject\YmirAI\cosy_app\character\zhenhai\qdv4aga7uz1nrx48otvpf04ivrn0hvy.mp3',"rb") as f:
+    #     data = f.read()
+    # ass.insert_audio("3","逸仙","wav","你是在思考吗？还是说，只是单纯的在发呆？表情倒是挺可爱的呢，呵呵...","你好，分析员。[breath]想我了吗[laughter]",data)
+
+    print(ass.get_all_by_uid(3))
+    # print(ass.get_data_by_id(1))

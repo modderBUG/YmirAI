@@ -147,6 +147,10 @@ def predict():
 
 @app.route('/api/v1/make_voice', methods=['POST'])
 def self_making_voice():
+    """
+    自定义语音合成接口。
+    :return:
+    """
     try:
 
         user_text = request.form.get("text")
@@ -202,6 +206,14 @@ def root_path():
     return response_entity(data=res)
 
 
+def generate_text(text):
+    for i in text:
+        time.sleep(0.1)
+        yield  f"data: {json.dumps({'data':i})}\n\n"
+
+    yield "data: [DONE]\n\n"
+
+
 @app.route('/api/v1/chat', methods=['post'])
 def post_chat():
     """
@@ -210,6 +222,11 @@ def post_chat():
     重新生成：根据history和query生成新的条款。
     """
     try:
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None:return Response(generate_text("你没有登录哦，请登录后进行聊天"), mimetype='text/event-stream')
+
         req_data = request.get_json()
         query = req_data.get("query", "")
         history = req_data.get("history", [])
@@ -310,12 +327,55 @@ def post_summary():
 @app.route('/api/v1/get_voice', methods=['POST'])
 def get_voice_and_save_conv():
     """
-    分类 + 大纲 -> 条款生成接口。
-    当query有字段，则为条款重新生成接口。否则为第一次生成。
-    重新生成：根据history和query生成新的条款。
+
     """
     db = None
     try:
+        data = request.get_json()
+
+        conv = data.get("conversation", None)
+        speeches_id = data.get("speechesId", None)
+        conv_id = data.get("convid", None)
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = ConvService()
+        db.update_conv_by_convid(json.dumps(conv), conv_id, uid)
+
+        bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
+
+        url = _get_voice(bot_message,"kesya") if len(bot_message)<30 else "error"
+        print("url:",url)
+
+        if "voice" in conv[len(conv) - 1]:
+            conv[len(conv) - 1]["voice"].append(url)
+        else:
+            conv[len(conv) - 1]["voice"] = [url]
+        db.update_conv_by_convid(json.dumps(conv), conv_id, uid)
+
+        return response_entity(data=conv)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+
+    finally:
+        if db is not None:
+            db.close()
+
+
+@app.route('/api/v2/get_voice', methods=['POST'])
+def generate_voice_by_text():
+    """
+    TODO 更合理的请求
+    """
+    db = None
+    try:
+
+        # 拿到convid，拿到recordsId，拿到bot_idx，更新相应的字段。
         data = request.get_json()
 
         conv = data.get("conversation", None)
@@ -350,8 +410,6 @@ def get_voice_and_save_conv():
     finally:
         if db is not None:
             db.close()
-
-
 
 @app.route('/api/v1/login', methods=['POST'])
 def login():
