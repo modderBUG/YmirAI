@@ -1,13 +1,13 @@
 import time
 
 import requests
-from flask import Flask, Response, request,send_file
+from flask import Flask, Response, request, send_file
 from flask_cors import CORS
 from cosy_service import with_char_stream_chat
 import json
 import traceback
 from flask_caching import Cache
-from databases.sqllite_connection import UserService, ConvService,AudioService
+from databases.sqllite_connection import UserService, ConvService, AudioService,CharacterService
 
 app = Flask(__name__)
 
@@ -149,17 +149,19 @@ def post_summary():
         if db is not None:
             db.close()
 
-from llm_prompts.qiniu_upload import upload_file_to_qiniu
-def _get_voice(text,charactor):
-    res = requests.post("http://49.232.24.59/api/v1/voice_generate",json={
-        "text":text,
-        "character":charactor
-    })
-    filename = str(hash(text))+".wav"
-    res = upload_file_to_qiniu(res.content,filename)
-    path = res["key"]
-    return "http://si5c7yq6z.hn-bkt.clouddn.com/"+path
 
+from llm_prompts.qiniu_upload import upload_file_to_qiniu
+
+
+def _get_voice(text, charactor):
+    res = requests.post("http://49.232.24.59/api/v1/voice_generate", json={
+        "text": text,
+        "character": charactor
+    })
+    filename = str(hash(text)) + ".wav"
+    res = upload_file_to_qiniu(res.content, filename)
+    path = res["key"]
+    return "http://si5c7yq6z.hn-bkt.clouddn.com/" + path
 
 
 @app.route('/api/v1/get_voice', methods=['POST'])
@@ -187,8 +189,8 @@ def get_voice_and_save_conv():
 
         bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
 
-        url = _get_voice(bot_message,"yixian")
-        print("url:",url)
+        url = _get_voice(bot_message, "yixian")
+        print("url:", url)
 
         if "voice" in conv[len(conv) - 1]:
             conv[len(conv) - 1]["voice"].append(url)
@@ -205,7 +207,6 @@ def get_voice_and_save_conv():
     finally:
         if db is not None:
             db.close()
-
 
 
 @app.route('/api/v1/voice2', methods=['POST'])
@@ -233,8 +234,8 @@ def get_saved_voice2():
 
         bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
 
-        url = _get_voice(bot_message,"yixian")
-        print("url:",url)
+        url = _get_voice(bot_message, "yixian")
+        print("url:", url)
 
         if "voice" in conv[len(conv) - 1]:
             conv[len(conv) - 1]["voice"].append(url)
@@ -264,23 +265,15 @@ def self_making_voice():
         user_text = request.form.get("text")
         prompts_text = request.form.get("prompts_text")
         self_voice = request.files.get("file")
-
         print(user_text)
         print(prompts_text)
         print(self_voice)
-
-        f = open(r'F:\PycharmProjects\YmirAI\cosy_app\character\huajia2\b6cxl0z7w0j878nwkf2b57vaa2rbv5z.mp3',"rb")
-
-
-
-        return  send_file(f, mimetype='audio/wav', as_attachment=True,
+        f = open(r'..\cosy_app\character\huajia2\b6cxl0z7w0j878nwkf2b57vaa2rbv5z.mp3', "rb")
+        return send_file(f, mimetype='audio/wav', as_attachment=True,
                          download_name=f'{str(time.time())[:10]}.wav')
-
-
-
-
     except Exception as e:
         print(e)
+
 
 @app.route('/api/v1/voices', methods=['GET'])
 def get_saved_voice():
@@ -301,6 +294,7 @@ def get_saved_voice():
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
 
+
 @app.route('/api/v1/voice/<id>', methods=['GET'])
 def get_voice_data(id):
     db = None
@@ -317,8 +311,7 @@ def get_voice_data(id):
             db.delete_audio(id)
             return response_entity(data=id)
 
-
-        res = db.get_data_by_id(id)
+        res = db.get_b64data_by_id(id)
         if len(res) == 0: return response_entity(400, f'不存在')
 
         return response_entity(data=res)
@@ -328,6 +321,7 @@ def get_voice_data(id):
         return response_entity(500, f'服务器内部错误！请重试！')
     finally:
         db.close()
+
 
 @app.route('/api/v1/voice', methods=['POST'])
 def save_voice_data():
@@ -342,7 +336,8 @@ def save_voice_data():
         self_voice = request.files.get("file")
 
         db = AudioService()
-        db.insert_audio(uid=uid,filename=self_voice.filename,mime_type="audio/wav",prompts_text=prompts_text,text=user_text,audio_data=self_voice.stream.read())
+        db.insert_audio(uid=uid, filename=self_voice.filename, mime_type="audio/wav", prompts_text=prompts_text,
+                        text=user_text, audio_data=self_voice.stream.read())
         return response_entity(data="ok")
     except Exception as e:
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
@@ -350,6 +345,60 @@ def save_voice_data():
         return response_entity(500, f'服务器内部错误！请重试！')
     finally:
         db.close()
+
+@app.route('/api/v1/characters', methods=['GET'])
+def get_saved_characters():
+    try:
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = CharacterService()
+
+        res = db.get_all_characters_info_by_uid(uid)
+        if len(res) == 0: return response_entity(400, f'不存在')
+
+        return response_entity(data=res)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+
+@app.route('/api/v1/character/<id>', methods=['GET'])
+def get_character_b64data(id):
+    db = None
+    try:
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = CharacterService()
+
+        del_flag = request.args.get("delete", None)
+        if del_flag:
+            db.delete_character(id,uid)
+            return response_entity(data=id)
+
+        avatar = request.args.get("avatar", None)
+        if avatar:
+            data = db.get_character_avatar_by_id(id)
+            return response_entity(data=data)
+
+        audio = request.args.get("audio", None)
+        if audio:
+            data = db.get_character_b64data_by_id(id)
+            return response_entity(data=data)
+
+        return response_entity(data="")
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+    finally:
+        db.close()
+
 
 @app.route('/api/v1/login', methods=['POST'])
 def login():

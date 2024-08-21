@@ -1,11 +1,15 @@
+import json
 import sqlite3
 from sqlite3 import Error
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import base64
+from config_prompts import prompts_kesya
+
 # 加密密码
 def hash_password(password):
     return generate_password_hash(password)
+
 
 # 验证密码
 def verify_password(stored_password, provided_password):
@@ -54,10 +58,11 @@ class Database:
     def fetch_all(self, query, params=()):
         """ 获取所有结果 """
         cursor = self.connection.cursor()
-        print(query,params)
+        print(query, params)
         cursor.execute(query, params)
 
         return cursor.fetchall()
+
 
 class UserService(Database):
 
@@ -102,45 +107,44 @@ class UserService(Database):
 
 
 class ConvService(Database):
-    def insert_message(self, convid, user_text, bot_text,round_num):
+    def insert_message(self, convid, user_text, bot_text, round_num):
         query = """INSERT INTO "ChatRecords" ("convID", "user_text", "bot_text", "ground") VALUES (?, ?, ?,?);"""
-        self.execute_query(query, (convid, user_text, bot_text,round_num))
+        self.execute_query(query, (convid, user_text, bot_text, round_num))
 
-    def find_msg_by_convid(self,convid):
+    def find_msg_by_convid(self, convid):
         sql = """SELECT * FROM "ChatRecords" WHERE  "convID"=?;"""
-        res = self.fetch_all(sql,(convid,))
+        res = self.fetch_all(sql, (convid,))
         return res
 
-    def insert_conversation(self,uid,summery):
+    def insert_conversation(self, uid, summery):
         sql = """INSERT INTO "Conversations" ("uid", "summary") VALUES (?, ?);"""
-        self.execute_query(sql,(uid,summery))
+        self.execute_query(sql, (uid, summery))
 
-    def get_all_conversation_by_uid(self,uid):
+    def get_all_conversation_by_uid(self, uid):
         sql = """SELECT "convID", "summary" FROM "Conversations" WHERE  "uid"=? and "del_flag"<>1;"""
         res = self.fetch_all(sql, (uid,))
         return res
 
-
-
-    def update_summary_by_convid(self,summary,convid,uid):
+    def update_summary_by_convid(self, summary, convid, uid):
         sql = """UPDATE "Conversations" SET "summary"=? WHERE  "convID"=? and "uid"=?;"""
-        res = self.execute_query(sql, (summary,convid,uid))
+        res = self.execute_query(sql, (summary, convid, uid))
         return res
 
-    def update_conv_by_convid(self,conv_text,convid,uid):
+    def update_conv_by_convid(self, conv_text, convid, uid):
         sql = """UPDATE "Conversations" SET "conv"=? WHERE  "convID"=? and "uid"=?;"""
-        res = self.execute_query(sql, (conv_text,convid,uid))
+        res = self.execute_query(sql, (conv_text, convid, uid))
         return res
-    def get_conv_by_convid(self,convid,uid):
+
+    def get_conv_by_convid(self, convid, uid):
         sql = """SELECT "convID", "conv" FROM "Conversations" WHERE  "convID"=? and "uid"=?;"""
-        res = self.fetch_all(sql, (convid,uid))
+        res = self.fetch_all(sql, (convid, uid))
         return res
 
     def generate_convid(self, uid, summary):
         try:
             sql = """INSERT INTO "Conversations" ("uid", "summary") VALUES (?, ?);"""
             cursor = self.connection.cursor()
-            cursor.execute(sql, (uid,summary))
+            cursor.execute(sql, (uid, summary))
             self.connection.commit()
             print("Query executed successfully.")
             return cursor.lastrowid  # 返回插入的行 ID
@@ -150,37 +154,107 @@ class ConvService(Database):
 
 
 class AudioService(Database):
-    def insert_audio(self, uid, filename, mime_type,prompts_text,text,audio_data):
+    def insert_audio(self, uid, filename, mime_type, prompts_text, text, audio_data):
         query = """INSERT INTO "audio_files" ("uid", "file_name", "mime_type", "prompts_text", "text", "audio_data")  VALUES (?, ?, ?,?,?,?);"""
-        self.execute_query(query, (uid, filename, mime_type,prompts_text,text,audio_data))
-
-
-
+        self.execute_query(query, (uid, filename, mime_type, prompts_text, text, audio_data))
 
     def delete_audio(self, id):
-        query = """DELETE FROM "audio_files" WHERE  "id"=?;"""
+        # query = """DELETE FROM "audio_files" WHERE  "id"=?;"""
+        query = """UPDATE "audio_files" SET "del_flag"=1 WHERE  "id"=?;"""
         self.execute_query(query, (id,))
 
-    def get_all_by_uid(self,uid):
-        sql = """SELECT "id", "uid", "file_name", "mime_type", "prompts_text", "text", "upload_date", "audio_data" FROM "audio_files" WHERE  "uid"=?;"""
+    def get_all_by_uid(self, uid):
+        sql = """
+        SELECT "id", "uid", "file_name", "mime_type", "prompts_text", "text", "upload_date", "audio_data" 
+        FROM "audio_files" 
+        WHERE  "uid"=? AND "del_flag"!=1;"""
         res = self.fetch_all(sql, (uid,))
 
-        res = [ {
-            "id":item[0],
-            "uid":item[1],
-            "file_name":item[2],
-            "mime_type":item[3],
-            "prompts_text":item[4],
-            "text":item[5],
-            "upload_date":item[6],
-        } for item in res ]
+        res = [{
+            "id": item[0],
+            "uid": item[1],
+            "file_name": item[2],
+            "mime_type": item[3],
+            "prompts_text": item[4],
+            "text": item[5],
+            "upload_date": item[6],
+        } for item in res]
         return res
 
-    def get_data_by_id(self,id):
-        sql = """SELECT  "audio_data" FROM "audio_files" WHERE  "id"=?;"""
+    def get_b64data_by_id(self, id):
+        sql = """SELECT  "audio_data" FROM "audio_files" WHERE  "id"=? and "del_flag"<>1;"""
         res = self.fetch_all(sql, (id,))
         audio_base64 = base64.b64encode(res[0][0]).decode('utf-8')
         return audio_base64
+
+
+class CharacterService(Database):
+    def insert_character(self, uid, character_name, summery, prompts_texts, text, audio_data, avatar, publish):
+        query = """INSERT INTO "characters" ("uid", "character_name", "summery", "prompts_texts", "text", "audio_data", "avatar", "publish", "del_flag") 
+        VALUES (?, ?, ?, ?, ?, ?, ?,?, 0);"""
+        self.execute_query(query, (uid, character_name, summery, prompts_texts, text, audio_data, avatar, publish))
+
+    def delete_character(self, id, uid):
+        # query = """DELETE FROM "audio_files" WHERE  "id"=?;"""
+        query = """UPDATE "characters" SET "del_flag"=1 WHERE  "id"=? AND "uid"==?;"""
+        self.execute_query(query, (id, uid))
+
+    def publish_character(self, id, uid):
+        # query = """DELETE FROM "audio_files" WHERE  "id"=?;"""
+        query = """UPDATE "characters" SET "publish"=1 WHERE  "id"=? AND "uid"=?;"""
+        self.execute_query(query, (id, uid))
+
+    def get_all_characters_by_uid(self, uid):
+        sql = """
+        SELECT "id", "uid", "character_name", "summery", "prompts_texts", "text", "upload_date",  "avatar", "publish" 
+        FROM "characters"
+        WHERE  "uid"=? AND "del_flag"!=1 limit 5;"""
+        res = self.fetch_all(sql, (uid,))
+
+        res = [{
+            "id": item[0],
+            "uid": item[1],
+            "character_name": item[2],
+            "summery": item[3],
+            "prompts_texts": json.loads(item[4]),
+            "text": item[5],
+            "upload_date": item[6],
+            "avatar": item[7],
+            "publish": item[8],
+        } for item in res]
+        return res
+
+    def get_all_characters_info_by_uid(self, uid):
+        sql = """
+        SELECT "id", "uid", "character_name", "summery", "prompts_texts", "text", "upload_date",  "publish" 
+        FROM "characters"
+        WHERE  "uid"=? AND "del_flag"!=1 limit 20;"""
+        res = self.fetch_all(sql, (uid,))
+
+        res = [{
+            "id": item[0],
+            "uid": item[1],
+            "character_name": item[2],
+            "summery": item[3],
+            "prompts_texts": json.loads(item[4]),
+            "text": item[5],
+            "upload_date": item[6],
+            "publish": item[7],
+        } for item in res]
+        return res
+
+    def get_character_b64data_by_id(self, id):
+        sql = """SELECT  "audio_data" FROM "characters" WHERE  "id"=? and "del_flag"<>1;"""
+        res = self.fetch_all(sql, (id,))
+        audio_base64 = base64.b64encode(res[0][0]).decode('utf-8')
+        return audio_base64
+    def get_character_avatar_by_id(self, id):
+        sql = """SELECT  "avatar" FROM "characters" WHERE  "id"=? and "del_flag"<>1;"""
+        res = self.fetch_all(sql, (id,))
+        audio_base64 = base64.b64encode(res[0][0]).decode('utf-8')
+        return audio_base64
+
+
 
 
 # SQL 表创建语句
@@ -233,7 +307,7 @@ CREATE TABLE "ChatRecords" (
 ;
 """
 
-create_audio_files_table ="""
+create_audio_files_table = """
 CREATE TABLE audio_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uid INTEGER NOT NULL,
@@ -243,10 +317,29 @@ CREATE TABLE audio_files (
     text TEXT NOT NULL,
     upload_date DATETIME DEFAULT CURRENT_TIMESTAMP,
     audio_data BLOB NOT NULL,
+    del_flag TINYINT NOT NULL,
     CONSTRAINT "0" FOREIGN KEY ("uid") REFERENCES "Users" ("uid") ON UPDATE NO ACTION ON DELETE CASCADE
 );
 
 """
+
+create_characters_table = """
+CREATE TABLE characters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid INTEGER NOT NULL,
+    character_name TEXT NOT NULL,
+    summery TEXT NOT NULL,
+    prompts_texts TEXT NOT NULL,
+    text TEXT NOT NULL,
+    upload_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    audio_data BLOB NOT NULL,
+    avatar BLOB NOT NULL,
+    publish TINYINT NOT NULL,
+    del_flag TINYINT NOT NULL,
+    CONSTRAINT "0" FOREIGN KEY ("uid") REFERENCES "Users" ("uid") ON UPDATE NO ACTION ON DELETE CASCADE
+);
+"""
+
 
 
 
@@ -316,8 +409,7 @@ if __name__ == "__main__":
     # res = user_service.get_info_by_uid(3)
     # print(res)
 
-
-    cs =ConvService()
+    cs = ConvService()
     # cs.insert_message(1,"aaaa","vvvvv",4)
     # print(cs.find_msg_by_convid(1))
     # print(cs.get_all_conversation_by_uid(3))
@@ -327,12 +419,25 @@ if __name__ == "__main__":
 
     # print(cs.get_conv_by_convid(4,3))
 
-
     ass = AudioService()
 
     # with open(r'D:\projects\pythonproject\YmirAI\cosy_app\character\zhenhai\qdv4aga7uz1nrx48otvpf04ivrn0hvy.mp3',"rb") as f:
     #     data = f.read()
     # ass.insert_audio("3","逸仙","wav","你是在思考吗？还是说，只是单纯的在发呆？表情倒是挺可爱的呢，呵呵...","你好，分析员。[breath]想我了吗[laughter]",data)
 
-    print(ass.get_all_by_uid(3))
+    # print(ass.get_all_by_uid(3))
     # print(ass.get_data_by_id(1))
+
+    ccss = CharacterService()
+
+    print(ccss.get_all_characters_info_by_uid(3))
+
+    file2 = open(r"D:\projects\pythonproject\YmirAI\assert\85px-yixian.jpg","rb")
+    file = open(r"D:\projects\pythonproject\YmirAI\cosy_app\character\yixian\rwertoem4id64mao2x9hcs96l4tstnu.mp3","rb")
+    prompt_text = "嗯，对女性做出这样的举动，想必指挥官也做好承担后果的心理准备了吧？"
+    prompts_text = [
+        {"role": "system", "content": f"{prompts_kesya}"},
+        {"role": "assistant", "content": f"想我了么？"},
+    ]
+
+    # ccss.insert_character(3,"逸仙-test","测试一线",prompts_texts=json.dumps(prompts_text),text=prompt_text,audio_data=file.read(),avatar=file2.read(),publish=0)

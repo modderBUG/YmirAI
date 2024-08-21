@@ -12,11 +12,12 @@ import numpy as np
 import io
 import logging
 from cosy_service import _read_json, with_char_stream_chat
-from databases.sqllite_connection import UserService,ConvService
+from databases.sqllite_connection import UserService, ConvService
 from qiniu_upload import upload_file_to_qiniu
 
 app = Flask(__name__)
 
+# 创建token缓存
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
 
 file_handler = logging.FileHandler('cosy_server.log')
@@ -27,7 +28,7 @@ app.logger.addHandler(file_handler)
 logger = app.logger
 
 np.random.seed(42)
-cosyvoice = None
+cosy_voice_model = None
 character_base_dir = "character"
 character = {}
 
@@ -66,11 +67,10 @@ def get_uid_by_token(request):
         return None
 
 
-
 @app.before_first_request
 def first_request():
-    global cosyvoice
-    cosyvoice = CosyVoice('pretrained_models/CosyVoice-300M-Instruct')
+    global cosy_voice_model
+    cosy_voice_model = CosyVoice('pretrained_models/CosyVoice-300M-Instruct')
 
 
 def response_entity(code=200, msg="ok", data=None):
@@ -82,14 +82,15 @@ def response_entity(code=200, msg="ok", data=None):
     return json.dumps(res, ensure_ascii=False, indent=4)
 
 
-def _generate_voice(user_text,char_name):
+def _generate_voice(user_text, char_name):
+    assert isinstance(cosy_voice_model,CosyVoice)
     if user_text is None or char_name is None:
         raise Exception(f'没有传入TTS文本、或者角色为空。\n可选角色{character.keys()}')
 
     prompts_text = character[char_name]["text"]
     prompt_speech_16k = character[char_name]["prompt_speech_16k"]
 
-    output = cosyvoice.inference_zero_shot(user_text, prompts_text, prompt_speech_16k)
+    output = cosy_voice_model.inference_zero_shot(user_text, prompts_text, prompt_speech_16k)
     # torchaudio.save('zero_shot.wav', output['tts_speech'], 22050)
     audio_bytes = io.BytesIO()
 
@@ -100,21 +101,23 @@ def _generate_voice(user_text,char_name):
     audio_bytes.seek(0)
     return audio_bytes
 
-def _get_voice(text,charactor):
+
+def _get_voice(text, charactor):
     # res = requests.post("http://49.232.24.59/api/v1/voice_generate",json={
     #     "text":text,
     #     "character":charactor
     # })
-    res = _generate_voice(text,charactor)
-    filename = str(hash(text))+".wav"
-    res = upload_file_to_qiniu(res,filename)
+    res = _generate_voice(text, charactor)
+    filename = str(hash(text)) + ".wav"
+    res = upload_file_to_qiniu(res, filename)
     path = res["key"]
-    return "http://si5c7yq6z.hn-bkt.clouddn.com/"+path
+    return "http://si5c7yq6z.hn-bkt.clouddn.com/" + path
 
 
 @app.route('/api/v1/voice_generate', methods=['POST'])
 def predict():
     try:
+        assert isinstance(cosy_voice_model,CosyVoice)
         body = request.get_json()
         user_text = body.get("text", None)
         char_name = body.get("character", None)
@@ -124,7 +127,7 @@ def predict():
         prompts_text = character[char_name]["text"]
         prompt_speech_16k = character[char_name]["prompt_speech_16k"]
 
-        output = cosyvoice.inference_zero_shot(user_text, prompts_text, prompt_speech_16k)
+        output = cosy_voice_model.inference_zero_shot(user_text, prompts_text, prompt_speech_16k)
         # torchaudio.save('zero_shot.wav', output['tts_speech'], 22050)
         audio_bytes = io.BytesIO()
 
@@ -134,15 +137,12 @@ def predict():
         # 重置 BytesIO 对象的指针到开始位置
         audio_bytes.seek(0)
 
-
         # 返回音频数据而不保存到本地
         return send_file(audio_bytes, mimetype='audio/wav', as_attachment=True,
                          download_name=f'{str(time.time())[:10]}.wav')
     except Exception as e:
         print(str(e), traceback.format_exc())
         return response_entity(500, f"服务器压力达到极限，亲稍后再试。tips:{str(e)}")
-
-
 
 
 @app.route('/api/v1/make_voice', methods=['POST'])
@@ -152,19 +152,18 @@ def self_making_voice():
     :return:
     """
     try:
+        assert isinstance(cosy_voice_model,CosyVoice)
 
         user_text = request.form.get("text")
         prompts_text = request.form.get("prompts_text")
         self_voice = request.files.get("file")
 
-
         if user_text is None or self_voice is None:
             raise Exception(f'没有传入TTS文本、或者角色为空。\n可选角色{character.keys()}')
 
-
         prompt_speech_16k = load_wav(self_voice.stream.read(), 16000)
 
-        output = cosyvoice.inference_zero_shot(user_text, prompts_text, prompt_speech_16k)
+        output = cosy_voice_model.inference_zero_shot(user_text, prompts_text, prompt_speech_16k)
 
         audio_bytes = io.BytesIO()
 
@@ -184,6 +183,7 @@ def self_making_voice():
 
 @app.route('/api/v1/sound', methods=['POST'])
 def get_sound():
+    """获取指定角色的语音"""
     try:
         body = request.get_json()
         char_name = body.get("character", None)
@@ -201,6 +201,7 @@ def get_sound():
 @app.route('/api/v1/characters')
 # @token_required
 def root_path():
+    """获取所有支持的角色和对应语音"""
     names = os.listdir(character_base_dir)
     res = {i: _read_json(os.path.join(character_base_dir, i, "config.json")) for i in names}
     return response_entity(data=res)
@@ -209,7 +210,7 @@ def root_path():
 def generate_text(text):
     for i in text:
         time.sleep(0.1)
-        yield  f"data: {json.dumps({'data':i})}\n\n"
+        yield f"data: {json.dumps({'data': i})}\n\n"
 
     yield "data: [DONE]\n\n"
 
@@ -217,15 +218,13 @@ def generate_text(text):
 @app.route('/api/v1/chat', methods=['post'])
 def post_chat():
     """
-    分类 + 大纲 -> 条款生成接口。
-    当query有字段，则为条款重新生成接口。否则为第一次生成。
-    重新生成：根据history和query生成新的条款。
+    聊天接口
     """
     try:
 
         uid = get_uid_by_token(request)
         print(f"uid:{uid}")
-        if uid is None:return Response(generate_text("你没有登录哦，请登录后进行聊天"), mimetype='text/event-stream')
+        if uid is None: return Response(generate_text("你没有登录哦，请登录后进行聊天"), mimetype='text/event-stream')
 
         req_data = request.get_json()
         query = req_data.get("query", "")
@@ -239,7 +238,8 @@ def post_chat():
 
 @app.route('/api/generate/convid', methods=['GET'])
 def post_generate_convid():
-    # print(request.headers)
+    """获取一个会话id"""
+    db = None
     try:
 
         uid = get_uid_by_token(request)
@@ -253,10 +253,14 @@ def post_generate_convid():
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
+    finally:
+        db.close()
 
 
 @app.route('/api/conv/<cid>', methods=['GET'])
 def get_conv(cid):
+    """通过会话id获取聊天内容"""
+    db = None
     try:
 
         uid = get_uid_by_token(request)
@@ -273,14 +277,13 @@ def get_conv(cid):
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
+    finally:
+        db.close()
 
 
 @app.route('/api/v1/summary', methods=['POST'])
 def post_summary():
-    """
-    分类 + 大纲 -> 条款生成接口。
-    当query有字段，则为条款重新生成接口。否则为第一次生成。
-    重新生成：根据history和query生成新的条款。
+    """总结会话摘要
     """
     db = None
     try:
@@ -321,9 +324,6 @@ def post_summary():
             db.close()
 
 
-
-
-
 @app.route('/api/v1/get_voice', methods=['POST'])
 def get_voice_and_save_conv():
     """
@@ -347,8 +347,8 @@ def get_voice_and_save_conv():
 
         bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
 
-        url = _get_voice(bot_message,"kesya") if len(bot_message)<30 else "error"
-        print("url:",url)
+        url = _get_voice(bot_message, "kesya") if len(bot_message) < 30 else "error"
+        print("url:", url)
 
         if "voice" in conv[len(conv) - 1]:
             conv[len(conv) - 1]["voice"].append(url)
@@ -392,8 +392,8 @@ def generate_voice_by_text():
 
         bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
 
-        url = _get_voice(bot_message,"kesya")
-        print("url:",url)
+        url = _get_voice(bot_message, "kesya")
+        print("url:", url)
 
         if "voice" in conv[len(conv) - 1]:
             conv[len(conv) - 1]["voice"].append(url)
@@ -410,6 +410,7 @@ def generate_voice_by_text():
     finally:
         if db is not None:
             db.close()
+
 
 @app.route('/api/v1/login', methods=['POST'])
 def login():
@@ -441,6 +442,7 @@ def login():
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
+
 
 if __name__ == '__main__':
     _init_project()
