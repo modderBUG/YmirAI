@@ -15,6 +15,7 @@ from cosy_service import _read_json, with_char_stream_chat,with_charid_stream_ch
 from databases.sqllite_connection import UserService, ConvService,CharacterService,AudioService
 from llm_prompts.qiniu_upload import upload_file_to_qiniu
 from configs.project_config import MAX_VOICE_LEN
+import tempfile
 app = Flask(__name__)
 
 # 创建token缓存
@@ -50,13 +51,20 @@ def _init_project():
     for item in items:
         try:
             file_bytes =  db.get_character_audio_by_id(item["id"])
-            user_character[item["id"]] = {
-                "text":item["id"]["text"],
-                "prompt_speech_16k":load_wav(file_bytes, 16000)
-            }
-        except Exception as e:
-            print(str(e))
 
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+
+            with open(temp_file.name, 'wb') as f:
+                f.write(file_bytes)
+
+            user_character[str(item["id"])] = {
+                "text":item["text"],
+                "prompt_speech_16k":load_wav(temp_file.name, 16000)
+            }
+            os.remove(temp_file.name)
+        except Exception as e:
+            print(str(e),traceback.format_exc())
+    print("user_character",user_character)
     db.close()
 
 def get_uid_by_token(request):
@@ -123,7 +131,7 @@ def _generate_voice_by_cid(user_text, cid):
     if user_text is None or cid is None:
         raise Exception(f'没有传入TTS文本、或者角色为空。\n可选角色{character.keys()}')
 
-    cc = user_character.get(cid,None)
+    cc = user_character.get(str(cid),None)
     if cc is None:
         db = CharacterService()
         text = db.get_text_by_id(cid)
@@ -132,14 +140,14 @@ def _generate_voice_by_cid(user_text, cid):
         prompts_text = text
         prompt_speech_16k = load_wav(file_bytes,16000)
 
-        cc[cid] = {
+        user_character[str(cid)] = {
             "text":prompts_text,
             "prompt_speech_16k":prompt_speech_16k,
         }
 
     else:
-        prompts_text = cc[cid]["text"]
-        prompt_speech_16k = cc[cid]["prompt_speech_16k"]
+        prompts_text = cc["text"]
+        prompt_speech_16k = cc["prompt_speech_16k"]
 
     output = cosy_voice_model.inference_zero_shot(user_text, prompts_text, prompt_speech_16k)
     # torchaudio.save('zero_shot.wav', output['tts_speech'], 22050)
@@ -414,7 +422,7 @@ def get_voice_and_save_conv():
 
         bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
 
-        url = _generate_voice_by_cid(bot_message, character_id) if len(bot_message) < MAX_VOICE_LEN else "error"
+        url = _get_voice_by_cid(bot_message, character_id) if len(bot_message) < MAX_VOICE_LEN else "error"
         print("url:", url)
 
         if "voice" in conv[len(conv) - 1]:
