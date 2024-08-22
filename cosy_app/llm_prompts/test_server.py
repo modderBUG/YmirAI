@@ -3,7 +3,7 @@ import time
 import requests
 from flask import Flask, Response, request, send_file
 from flask_cors import CORS
-from cosy_service import with_char_stream_chat
+from cosy_service import with_char_stream_chat,with_charid_stream_chat
 import json
 import traceback
 from flask_caching import Cache
@@ -59,7 +59,8 @@ def post_chat():
         req_data = request.get_json()
         query = req_data.get("query", "")
         history = req_data.get("history", [])
-        return Response(with_char_stream_chat(history, query), mimetype='text/event-stream')
+        character_id = req_data.get("character_id",2)
+        return Response(with_charid_stream_chat(history, query,character_id), mimetype='text/event-stream')
     except Exception as e:
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
@@ -178,6 +179,7 @@ def get_voice_and_save_conv():
         conv = data.get("conversation", None)
         speeches_id = data.get("speechesId", None)
         conv_id = data.get("convid", None)
+        character_id = data.get("character_id", None)
 
         uid = get_uid_by_token(request)
         print(f"uid:{uid}")
@@ -189,7 +191,7 @@ def get_voice_and_save_conv():
 
         bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
 
-        url = _get_voice(bot_message, "yixian")
+        url = _get_voice(bot_message, "yixian") if len(bot_message) < 5 else "error"
         print("url:", url)
 
         if "voice" in conv[len(conv) - 1]:
@@ -352,18 +354,28 @@ def get_saved_characters():
 
         uid = get_uid_by_token(request)
         print(f"uid:{uid}")
-        if uid is None: return response_entity(401, f'未授权')
+        if uid is None:
+            return response_entity(401, f'未授权')
+
 
         db = CharacterService()
+        publish = request.args.get("publish",None)
+        page = request.args.get("page",1)
+        size = request.args.get("pageSize",20)
+        if publish:
+            res = db.get_published_characters_info(size,(page - 1) * size)
+            return response_entity(data=res)
+
+
 
         res = db.get_all_characters_info_by_uid(uid)
-        if len(res) == 0: return response_entity(400, f'不存在')
-
         return response_entity(data=res)
     except Exception as e:
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
+
+
 
 @app.route('/api/v1/character/<id>', methods=['GET'])
 def get_character_b64data(id):
@@ -399,6 +411,84 @@ def get_character_b64data(id):
     finally:
         db.close()
 
+
+@app.route('/api/v1/character', methods=['POST'])
+def save_character_data():
+    db = None
+    try:
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None:
+            return response_entity(401, f'未授权')
+
+        data = request.form
+        character_name = data.get('character_name')
+        summery = data.get('summery')
+        prompts_texts = data.get('prompts_texts')
+        text = data.get('text')
+        publish = data.get('publish')
+
+        # 处理文件
+        avatar_file = request.files.get('avatar')
+        audio_data_file = request.files.get('audio_data')
+
+        # 保存数据
+        db = CharacterService()
+        db.insert_character(uid=uid,
+                            character_name=character_name,
+                            summery=summery,
+                            prompts_texts=prompts_texts,
+                            text=text,
+                            audio_data=audio_data_file.stream.read(),
+                            avatar=avatar_file.stream.read(),
+                            publish=publish)
+        return response_entity(data="ok")
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！:{traceback.format_exc()}')
+    finally:
+        db.close()
+
+@app.route('/api/v1/register', methods=['POST'])
+def register():
+    """
+    哈希算法得到token。查库匹配密码。设置token缓存时间。
+    :return: 返回一个token
+    """
+    # 从nginx限制调用次数，因此不需要进行验证码登录。因为是明文传输密码，因此必须开启https。
+    try:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
+        nickname = data.get('nickname')
+        email = data.get('email')
+
+        token = str(hash(username + password))
+
+        user_service = UserService()
+
+        res = user_service.get_uid_by_uname(username)
+        if res is not None:
+            return response_entity(400, "用户已存在")
+        res = user_service.get_uid_by_email(email)
+        if res is not None:
+            return response_entity(400, "邮箱已存在")
+
+
+        user_service.insert_user(username, password, email)
+
+
+        cached_user_id = user_service.get_uid_by_uname(username)
+
+
+        print(f"set {token}:{cached_user_id}")
+        cache.set(token, cached_user_id, timeout=3600)
+        return response_entity(data=token)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
 
 @app.route('/api/v1/login', methods=['POST'])
 def login():

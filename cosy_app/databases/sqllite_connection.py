@@ -4,7 +4,7 @@ from sqlite3 import Error
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import base64
-from config_prompts import prompts_kesya
+from config_prompts import prompts_kesya,prompts_yixian
 
 # 加密密码
 def hash_password(password):
@@ -86,6 +86,16 @@ class UserService(Database):
         try:
             query = """SELECT "uid", "username", "nickname", "password", "email", "created_at", "updated_at" FROM "Users" WHERE  "username"=?;"""
             res = self.fetch_all(query, (uname,))
+            return res[0][0]
+        except Exception as e:
+            print(e)
+            print(query)
+            return None
+
+    def get_uid_by_email(self, email):
+        try:
+            query = """SELECT "uid" FROM "Users" WHERE  "email"=?;"""
+            res = self.fetch_all(query, (email,))
             return res[0][0]
         except Exception as e:
             print(e)
@@ -204,6 +214,24 @@ class CharacterService(Database):
         query = """UPDATE "characters" SET "publish"=1 WHERE  "id"=? AND "uid"=?;"""
         self.execute_query(query, (id, uid))
 
+
+    def get_prompts_by_id(self, id):
+        sql = """
+        SELECT "prompts_texts"
+        FROM "characters"
+        WHERE  id =? """
+        res = self.fetch_all(sql, (id,))
+        return res[0][0]
+
+
+    def get_text_by_id(self, id):
+        sql = """
+        SELECT "text"
+        FROM "characters"
+        WHERE  id =? """
+        res = self.fetch_all(sql, (id,))
+        return res[0][0]
+
     def get_all_characters_by_uid(self, uid):
         sql = """
         SELECT "id", "uid", "character_name", "summery", "prompts_texts", "text", "upload_date",  "avatar", "publish" 
@@ -243,6 +271,25 @@ class CharacterService(Database):
         } for item in res]
         return res
 
+    def get_published_characters_info(self,limit,offset):
+        sql = """
+        SELECT "id", "uid", "character_name", "summery", "prompts_texts", "text", "upload_date",  "publish" 
+        FROM "characters"
+        WHERE  "publish"=1 AND "del_flag"!=1 limit ? OFFSET ?;"""
+        res = self.fetch_all(sql,(limit,offset))
+
+        res = [{
+            "id": item[0],
+            "uid": item[1],
+            "character_name": item[2],
+            "summery": item[3],
+            "prompts_texts": json.loads(item[4]),
+            "text": item[5],
+            "upload_date": item[6],
+            "publish": item[7],
+        } for item in res]
+        return res
+
     def get_character_b64data_by_id(self, id):
         sql = """SELECT  "audio_data" FROM "characters" WHERE  "id"=? and "del_flag"<>1;"""
         res = self.fetch_all(sql, (id,))
@@ -253,8 +300,10 @@ class CharacterService(Database):
         res = self.fetch_all(sql, (id,))
         audio_base64 = base64.b64encode(res[0][0]).decode('utf-8')
         return audio_base64
-
-
+    def get_character_audio_by_id(self, id):
+        sql = """SELECT  "audio_data" FROM "characters" WHERE  "id"=? and "del_flag"<>1;"""
+        res = self.fetch_all(sql, (id,))
+        return res[0][0]
 
 
 # SQL 表创建语句
@@ -342,6 +391,26 @@ CREATE TABLE characters (
 
 
 
+def _test_insert_character():
+    ccss = CharacterService()
+    # file2 = open(r"D:\projects\pythonproject\YmirAI\assert\85px-yixian.jpg","rb")
+    # file = open(r"D:\projects\pythonproject\YmirAI\cosy_app\character\yixian\rwertoem4id64mao2x9hcs96l4tstnu.mp3","rb")
+    # prompt_text = "嗯，对女性做出这样的举动，想必指挥官也做好承担后果的心理准备了吧？"
+    # prompts_text = [
+    #     {"role": "system", "content": f"{prompts_yixian}"},
+    #     {"role": "assistant", "content": f"想我了么？指挥官大人。"},
+    # ]
+
+    file2 = open(r"D:/projects/YmirAI-web/src/assets/imgs/kesya.jpg", "rb")
+    file = open(r"D:\projects\pythonproject\YmirAI\cosy_app\character\kesya\加班后要去喝一杯吗？嗯？你不会忍心，让我一个人去吧。...我不想在这停留太久。...要找我的话，你有我的号码。.mp3", "rb")
+    prompt_text = "加班后要去喝一杯吗？嗯？你不会忍心，让我一个人去吧。...我不想在这停留太久。...要找我的话，你有我的号码。"
+    prompts_text = [
+        {"role": "system", "content": f"{prompts_kesya}"},
+        {"role": "assistant", "content": f"想我了么？呵呵。"},
+    ]
+
+    ccss.insert_character(3,"凯茜娅-模板","凯茜娅的内置模板",prompts_texts=json.dumps(prompts_text),text=prompt_text,audio_data=file.read(),avatar=file2.read(),publish=1)
+    ccss.close()
 
 
 """
@@ -430,14 +499,15 @@ if __name__ == "__main__":
 
     ccss = CharacterService()
 
-    print(ccss.get_all_characters_info_by_uid(3))
-
-    file2 = open(r"D:\projects\pythonproject\YmirAI\assert\85px-yixian.jpg","rb")
-    file = open(r"D:\projects\pythonproject\YmirAI\cosy_app\character\yixian\rwertoem4id64mao2x9hcs96l4tstnu.mp3","rb")
-    prompt_text = "嗯，对女性做出这样的举动，想必指挥官也做好承担后果的心理准备了吧？"
-    prompts_text = [
-        {"role": "system", "content": f"{prompts_kesya}"},
-        {"role": "assistant", "content": f"想我了么？"},
-    ]
-
+    # print(ccss.get_all_characters_info_by_uid(3))
+    #
+    # file2 = open(r"D:\projects\pythonproject\YmirAI\assert\85px-yixian.jpg","rb")
+    # file = open(r"D:\projects\pythonproject\YmirAI\cosy_app\character\yixian\rwertoem4id64mao2x9hcs96l4tstnu.mp3","rb")
+    # prompt_text = "嗯，对女性做出这样的举动，想必指挥官也做好承担后果的心理准备了吧？"
+    # prompts_text = [
+    #     {"role": "system", "content": f"{prompts_kesya}"},
+    #     {"role": "assistant", "content": f"想我了么？"},
+    # ]
     # ccss.insert_character(3,"逸仙-test","测试一线",prompts_texts=json.dumps(prompts_text),text=prompt_text,audio_data=file.read(),avatar=file2.read(),publish=0)
+
+    _test_insert_character()

@@ -4,7 +4,7 @@ import logging
 import traceback
 from configs.config_prompts import prompts_kesya
 from configs.project_config import *
-from databases.sqllite_connection import ConvService
+from databases.sqllite_connection import ConvService,CharacterService
 
 logger = logging.getLogger("cosy_server")
 
@@ -78,6 +78,52 @@ def with_char_stream_chat(history, query):
         {"role": "system", "content": f"{prompts_kesya}"},
         {"role": "assistant", "content": f"想我了么？"},
     ]
+
+    for user_text, assistant_text in history:
+        message.append({"role": "user", "content": user_text})
+        message.append({"role": "assistant", "content": assistant_text})
+
+    message.append({"role": "user", "content": query})
+
+    new_his = [query, ""]
+    history.append(new_his)
+
+
+    bot_message = ""
+
+    for i in stream_chat(message):
+
+        if i == "data: [DONE]\n":
+            break
+
+        history[-1] = [query, i]
+
+        res = {
+            "output": i,
+            "history": history
+        }
+        bot_message+=i
+
+        new_data_str = f"data: {response_stream(data=res)}\n\n"
+        # 逐个返回新的 JSON 数据
+        yield new_data_str
+
+
+    yield "data: [DONE]\n\n"
+
+
+
+def with_charid_stream_chat(history, query,c_id):
+    """
+    根据query生成新的clause
+    :return:
+    """
+
+    db = CharacterService()
+    prompts = db.get_prompts_by_id(c_id)
+    db.close()
+
+    message = json.loads(prompts)
 
     for user_text, assistant_text in history:
         message.append({"role": "user", "content": user_text})

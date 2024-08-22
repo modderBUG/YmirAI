@@ -11,8 +11,8 @@ import json
 import numpy as np
 import io
 import logging
-from cosy_service import _read_json, with_char_stream_chat
-from databases.sqllite_connection import UserService, ConvService
+from cosy_service import _read_json, with_char_stream_chat,with_charid_stream_chat
+from databases.sqllite_connection import UserService, ConvService,CharacterService,AudioService
 from qiniu_upload import upload_file_to_qiniu
 
 app = Flask(__name__)
@@ -31,17 +31,32 @@ np.random.seed(42)
 cosy_voice_model = None
 character_base_dir = "character"
 character = {}
-
+user_character = {}
 
 def _init_project():
     names = os.listdir(character_base_dir)
-    global character
+    global character,user_character
     for char_name in names:
         character[char_name] = _read_json(os.path.join(character_base_dir, char_name, "config.json"))
         sound_path = os.path.join(character_base_dir, char_name, character[char_name]["wav"])
         character[char_name]["prompt_speech_16k"] = load_wav(sound_path, 16000)
         print(f"init {char_name} done ...")
 
+    db = CharacterService()
+    items = db.get_published_characters_info(20,0)
+
+
+    for item in items:
+        try:
+            file_bytes =  db.get_character_audio_by_id(item["id"])
+            user_character[item["id"]] = {
+                "text":item["id"]["text"],
+                "prompt_speech_16k":load_wav(file_bytes, 16000)
+            }
+        except Exception as e:
+            print(str(e))
+
+    db.close()
 
 def get_uid_by_token(request):
     try:
@@ -102,6 +117,40 @@ def _generate_voice(user_text, char_name):
     return audio_bytes
 
 
+def _generate_voice_by_cid(user_text, cid):
+    assert isinstance(cosy_voice_model,CosyVoice)
+    if user_text is None or cid is None:
+        raise Exception(f'没有传入TTS文本、或者角色为空。\n可选角色{character.keys()}')
+
+    cc = user_character.get(cid,None)
+    if cc is None:
+        db = CharacterService()
+        text = db.get_text_by_id(cid)
+        file_bytes = db.get_character_audio_by_id(cid)
+
+        prompts_text = text
+        prompt_speech_16k = load_wav(file_bytes,16000)
+
+        cc[cid] = {
+            "text":prompts_text,
+            "prompt_speech_16k":prompt_speech_16k,
+        }
+
+    else:
+        prompts_text = cc[cid]["text"]
+        prompt_speech_16k = cc[cid]["prompt_speech_16k"]
+
+    output = cosy_voice_model.inference_zero_shot(user_text, prompts_text, prompt_speech_16k)
+    # torchaudio.save('zero_shot.wav', output['tts_speech'], 22050)
+    audio_bytes = io.BytesIO()
+
+    # 将生成的语音数据保存到 BytesIO 对象中
+    torchaudio.save(audio_bytes, output['tts_speech'], 22050, format='wav')
+
+    # 重置 BytesIO 对象的指针到开始位置
+    audio_bytes.seek(0)
+    return audio_bytes
+
 def _get_voice(text, charactor):
     # res = requests.post("http://49.232.24.59/api/v1/voice_generate",json={
     #     "text":text,
@@ -113,6 +162,13 @@ def _get_voice(text, charactor):
     path = res["key"]
     return "http://si5c7yq6z.hn-bkt.clouddn.com/" + path
 
+
+def _get_voice_by_cid(text, charactor_id):
+    res = _generate_voice_by_cid(text, charactor_id)
+    filename = str(hash(text)) + f"{time.time()}.wav"
+    res = upload_file_to_qiniu(res, filename)
+    path = res["key"]
+    return "http://si5c7yq6z.hn-bkt.clouddn.com/" + path
 
 @app.route('/api/v1/voice_generate', methods=['POST'])
 def predict():
@@ -229,7 +285,8 @@ def post_chat():
         req_data = request.get_json()
         query = req_data.get("query", "")
         history = req_data.get("history", [])
-        return Response(with_char_stream_chat(history, query), mimetype='text/event-stream')
+        character_id = req_data.get("character_id", 2)
+        return Response(with_charid_stream_chat(history, query, character_id), mimetype='text/event-stream')
     except Exception as e:
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
@@ -336,6 +393,7 @@ def get_voice_and_save_conv():
         conv = data.get("conversation", None)
         speeches_id = data.get("speechesId", None)
         conv_id = data.get("convid", None)
+        character_id = data.get("character_id", None)
 
         uid = get_uid_by_token(request)
         print(f"uid:{uid}")
@@ -347,7 +405,7 @@ def get_voice_and_save_conv():
 
         bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
 
-        url = _get_voice(bot_message, "kesya") if len(bot_message) < 30 else "error"
+        url = _generate_voice_by_cid(bot_message, character_id) if len(bot_message) < 30 else "error"
         print("url:", url)
 
         if "voice" in conv[len(conv) - 1]:
@@ -443,6 +501,226 @@ def login():
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
 
+
+@app.route('/api/v1/voices', methods=['GET'])
+def get_saved_voice():
+    """
+    获取所有指定uid的角色信息
+    为声音克隆页面提供服务
+    :return:
+    """
+    try:
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = AudioService()
+
+        res = db.get_all_by_uid(uid)
+        if len(res) == 0: return response_entity(400, f'不存在')
+
+        return response_entity(data=res)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+
+
+@app.route('/api/v1/voice/<id>', methods=['GET'])
+def get_voice_data(id):
+    db = None
+    try:
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = AudioService()
+
+        del_flag = request.args.get("delete", None)
+        if del_flag:
+            db.delete_audio(id)
+            return response_entity(data=id)
+
+        res = db.get_b64data_by_id(id)
+        if len(res) == 0: return response_entity(400, f'不存在')
+
+        return response_entity(data=res)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+    finally:
+        db.close()
+
+
+@app.route('/api/v1/voice', methods=['POST'])
+def save_voice_data():
+    """保存音频，为克隆声音界面服务"""
+    db = None
+    try:
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None: return response_entity(401, f'未授权')
+
+        user_text = request.form.get("text")
+        prompts_text = request.form.get("prompts_text")
+        self_voice = request.files.get("file")
+
+        db = AudioService()
+        db.insert_audio(uid=uid, filename=self_voice.filename, mime_type="audio/wav", prompts_text=prompts_text,
+                        text=user_text, audio_data=self_voice.stream.read())
+        return response_entity(data="ok")
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+    finally:
+        db.close()
+
+@app.route('/api/v1/characters', methods=['GET'])
+def get_saved_characters():
+    """获取所有公共角色的角色信息"""
+    try:
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None:
+            return response_entity(401, f'未授权')
+
+
+        db = CharacterService()
+        publish = request.args.get("publish",None)
+        page = request.args.get("page",1)
+        size = request.args.get("pageSize",20)
+        if publish:
+            res = db.get_published_characters_info(size,(page - 1) * size)
+            return response_entity(data=res)
+
+
+
+        res = db.get_all_characters_info_by_uid(uid)
+        return response_entity(data=res)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+
+
+
+@app.route('/api/v1/character/<id>', methods=['GET'])
+def get_character_b64data(id):
+    db = None
+    try:
+
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None: return response_entity(401, f'未授权')
+
+        db = CharacterService()
+
+        del_flag = request.args.get("delete", None)
+        if del_flag:
+            db.delete_character(id,uid)
+            return response_entity(data=id)
+
+        avatar = request.args.get("avatar", None)
+        if avatar:
+            data = db.get_character_avatar_by_id(id)
+            return response_entity(data=data)
+
+        audio = request.args.get("audio", None)
+        if audio:
+            data = db.get_character_b64data_by_id(id)
+            return response_entity(data=data)
+
+        return response_entity(data="")
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
+    finally:
+        db.close()
+
+
+@app.route('/api/v1/character', methods=['POST'])
+def save_character_data():
+    db = None
+    try:
+        uid = get_uid_by_token(request)
+        print(f"uid:{uid}")
+        if uid is None:
+            return response_entity(401, f'未授权')
+
+        data = request.form
+        character_name = data.get('character_name')
+        summery = data.get('summery')
+        prompts_texts = data.get('prompts_texts')
+        text = data.get('text')
+        publish = data.get('publish')
+
+        # 处理文件
+        avatar_file = request.files.get('avatar')
+        audio_data_file = request.files.get('audio_data')
+
+        # 保存数据
+        db = CharacterService()
+        db.insert_character(uid=uid,
+                            character_name=character_name,
+                            summery=summery,
+                            prompts_texts=prompts_texts,
+                            text=text,
+                            audio_data=audio_data_file.stream.read(),
+                            avatar=avatar_file.stream.read(),
+                            publish=publish)
+        return response_entity(data="ok")
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！:{traceback.format_exc()}')
+    finally:
+        db.close()
+
+@app.route('/api/v1/register', methods=['POST'])
+def register():
+    """
+    哈希算法得到token。查库匹配密码。设置token缓存时间。
+    :return: 返回一个token
+    """
+    # 从nginx限制调用次数，因此不需要进行验证码登录。因为是明文传输密码，因此必须开启https。
+    try:
+        data = request.json
+        username = data.get('username')
+        password = data.get('password')
+        nickname = data.get('nickname')
+        email = data.get('email')
+
+        token = str(hash(username + password))
+
+        user_service = UserService()
+
+        res = user_service.get_uid_by_uname(username)
+        if res is not None:
+            return response_entity(400, "用户已存在")
+        res = user_service.get_uid_by_email(email)
+        if res is not None:
+            return response_entity(400, "邮箱已存在")
+
+
+        user_service.insert_user(username, password, email)
+
+
+        cached_user_id = user_service.get_uid_by_uname(username)
+
+
+        print(f"set {token}:{cached_user_id}")
+        cache.set(token, cached_user_id, timeout=3600)
+        return response_entity(data=token)
+    except Exception as e:
+        print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
+        print(traceback.format_exc())
+        return response_entity(500, f'服务器内部错误！请重试！')
 
 if __name__ == '__main__':
     _init_project()
