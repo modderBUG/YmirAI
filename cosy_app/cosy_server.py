@@ -13,8 +13,8 @@ import io
 import logging
 from cosy_service import _read_json, with_char_stream_chat,with_charid_stream_chat
 from databases.sqllite_connection import UserService, ConvService,CharacterService,AudioService
-from qiniu_upload import upload_file_to_qiniu
-
+from llm_prompts.qiniu_upload import upload_file_to_qiniu
+from configs.project_config import MAX_VOICE_LEN
 app = Flask(__name__)
 
 # 创建token缓存
@@ -34,6 +34,7 @@ character = {}
 user_character = {}
 
 def _init_project():
+
     names = os.listdir(character_base_dir)
     global character,user_character
     for char_name in names:
@@ -254,7 +255,7 @@ def get_sound():
         return response_entity(500, f"服务器压力达到极限，亲稍后再试。tips:{str(e)}")
 
 
-@app.route('/api/v1/characters')
+@app.route('/api/v1/local_characters')
 # @token_required
 def root_path():
     """获取所有支持的角色和对应语音"""
@@ -266,7 +267,13 @@ def root_path():
 def generate_text(text):
     for i in text:
         time.sleep(0.1)
-        yield f"data: {json.dumps({'data': i})}\n\n"
+
+        data = {
+            "output": i,
+            "history": []
+        }
+
+        yield f"data: {json.dumps({'data': data})}\n\n"
 
     yield "data: [DONE]\n\n"
 
@@ -311,7 +318,8 @@ def post_generate_convid():
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @app.route('/api/conv/<cid>', methods=['GET'])
@@ -335,7 +343,8 @@ def get_conv(cid):
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @app.route('/api/v1/summary', methods=['POST'])
@@ -405,7 +414,7 @@ def get_voice_and_save_conv():
 
         bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
 
-        url = _generate_voice_by_cid(bot_message, character_id) if len(bot_message) < 30 else "error"
+        url = _generate_voice_by_cid(bot_message, character_id) if len(bot_message) < MAX_VOICE_LEN else "error"
         print("url:", url)
 
         if "voice" in conv[len(conv) - 1]:
@@ -477,6 +486,7 @@ def login():
     :return: 返回一个token
     """
     # 从nginx限制调用次数，因此不需要进行验证码登录。因为是明文传输密码，因此必须开启https。
+    user_service = None
     try:
         data = request.json
         username = data.get('username')
@@ -500,6 +510,9 @@ def login():
         print(f"input:{json.dumps(request.get_data())},err:{repr(e)}")
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
+    finally:
+        if user_service is not None:
+            user_service.close()
 
 
 @app.route('/api/v1/voices', methods=['GET'])
@@ -552,7 +565,8 @@ def get_voice_data(id):
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @app.route('/api/v1/voice', methods=['POST'])
@@ -577,7 +591,8 @@ def save_voice_data():
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 @app.route('/api/v1/characters', methods=['GET'])
 def get_saved_characters():
@@ -641,7 +656,8 @@ def get_character_b64data(id):
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！')
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 @app.route('/api/v1/character', methods=['POST'])
@@ -680,7 +696,8 @@ def save_character_data():
         print(traceback.format_exc())
         return response_entity(500, f'服务器内部错误！请重试！:{traceback.format_exc()}')
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 @app.route('/api/v1/register', methods=['POST'])
 def register():
@@ -724,4 +741,4 @@ def register():
 
 if __name__ == '__main__':
     _init_project()
-    app.run(debug=True, host='0.0.0.0', port=8220)
+    app.run(debug=True, host='0.0.0.0', port=48080)

@@ -18,3 +18,5 @@ API_URL = 'http://74.120.172.183:8216/v1/chat/completions'
 MODEL_TYPE = "Qwen2-7B-Instruct-GPTQ-Int4"
 
 TOKEN_EXPIRATION_TIME = 3600
+
+MAX_VOICE_LEN = 80
