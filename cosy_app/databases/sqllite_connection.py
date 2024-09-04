@@ -1,10 +1,14 @@
 import json
 import sqlite3
+import traceback
 from sqlite3 import Error
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import base64
-from config_prompts import prompts_kesya,prompts_yixian
+# from configs.config_prompts import prompts_kesya,prompts_yixian
+import pymysql
+from databases.config_database import mysql_config
+from datetime import datetime
 
 # 加密密码
 def hash_password(password):
@@ -19,13 +23,13 @@ def verify_password(stored_password, provided_password):
 class Database:
     def __init__(self):
         """ 初始化数据库连接 """
-        db_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chatbot.db')
-        print(db_file)
+        # db_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chatbot.db')
+        # print(db_file)
         # db_file = "D:\projects\pythonproject\YmirAI\cosy_app\databases\chatbot.db"
         self.connection = None
         try:
-            self.connection = sqlite3.connect(db_file)
-            print(f"Connected to database: {db_file}")
+            self.connection =  pymysql.connect(**mysql_config)   #  sqlite3.connect(db_file)
+            print(f"Connected to database: {mysql_config.get('host')}")
         except Error as e:
             print(f"Error connecting to database: {e}")
 
@@ -69,13 +73,13 @@ class UserService(Database):
     def insert_user(self, username, password, email):
         """ 插入新用户 """
         hashed_password = hash_password(password)  # 哈希处理密码
-        query = "INSERT INTO Users (username, password, email) VALUES (?, ?, ?)"
+        query = "INSERT INTO Users (username, password, email) VALUES (%s, %s, %s)"
         self.execute_query(query, (username, hashed_password, email))
         uid = self.get_uid_by_uname(username)
         self.add_credits_by_uid(uid, 80)
 
     def login_user(self, username, password):
-        query = "SELECT password FROM Users WHERE username = ?"
+        query = "SELECT password FROM Users WHERE username = %s"
         stored_password = self.fetch_all(query, (username,))
         if stored_password and verify_password(stored_password[0][0], password):
             return True
@@ -83,18 +87,22 @@ class UserService(Database):
             return False
 
     def get_uid_by_uname(self, uname):
+        query = """ 
+                SELECT `uid`, `username`, `nickname`, `password`, `email`, `created_at`, `updated_at` 
+                FROM `Users` 
+                WHERE  `username`=%s;
+                """
         try:
-            query = """SELECT "uid", "username", "nickname", "password", "email", "created_at", "updated_at" FROM "Users" WHERE  "username"=?;"""
             res = self.fetch_all(query, (uname,))
             return res[0][0]
         except Exception as e:
-            print(e)
-            print(query)
+            print(traceback.format_exc())
+            print(f"error : {str(e)}\n{query}")
             return None
 
     def get_uid_by_email(self, email):
+        query = """SELECT uid FROM Users WHERE  email=%s;"""
         try:
-            query = """SELECT "uid" FROM "Users" WHERE  "email"=?;"""
             res = self.fetch_all(query, (email,))
             return res[0][0]
         except Exception as e:
@@ -103,56 +111,64 @@ class UserService(Database):
             return None
 
     def get_info_by_uid(self, uid):
-        query = """SELECT "uid", "username", "nickname",  "email", "created_at", "updated_at" FROM "Users" WHERE  "uid"=?;"""
+        query = """SELECT uid, username, nickname,  email, created_at, updated_at FROM Users WHERE  uid=%s;"""
         res = self.fetch_all(query, (uid,))
-        return res[0]
+        format_res = []
+        for line in res[0]:
+            _line = [i.strftime('%Y-%m-%d %H:%M:%S') if isinstance(i, datetime) else i for i in line]
+            format_res.append(_line)
+
+        return format_res
 
     def add_credits_by_uid(self, uid, credit_num):
-        query = """INSERT INTO "Credits" ("uid", "credits") VALUES (3, 80);"""
+        query = """INSERT INTO Credits (uid, credits) VALUES (3, 80);"""
         self.execute_query(query, (uid, credit_num))
 
     def update_credits_by_uid(self, uid, credit_num):
-        query = """UPDATE "Credits" SET "credits"=?  WHERE  "uid"=?;"""
+        query = """UPDATE Credits SET credits=%s  WHERE  uid=%s;"""
         self.execute_query(query, (credit_num, uid))
 
 
 class ConvService(Database):
     def insert_message(self, convid, user_text, bot_text, round_num):
-        query = """INSERT INTO "ChatRecords" ("convID", "user_text", "bot_text", "ground") VALUES (?, ?, ?,?);"""
+        query = """INSERT INTO ChatRecords (convID, user_text, bot_text, ground) VALUES (%s, %s, %s, %s);"""
         self.execute_query(query, (convid, user_text, bot_text, round_num))
 
     def find_msg_by_convid(self, convid):
-        sql = """SELECT * FROM "ChatRecords" WHERE  "convID"=?;"""
+        sql = """SELECT * FROM  ChatRecords  WHERE   convID =%s;"""
         res = self.fetch_all(sql, (convid,))
         return res
 
     def insert_conversation(self, uid, summery):
-        sql = """INSERT INTO "Conversations" ("uid", "summary") VALUES (?, ?);"""
+        sql = """INSERT INTO  Conversations  ( uid ,  summary ) VALUES (%s, %s);"""
         self.execute_query(sql, (uid, summery))
 
     def get_all_conversation_by_uid(self, uid):
-        sql = """SELECT "convID", "summary" FROM "Conversations" WHERE  "uid"=? and "del_flag"<>1;"""
+        sql = """SELECT  convID ,  summary  FROM  Conversations  WHERE   uid=%s and del_flag<>1;"""
         res = self.fetch_all(sql, (uid,))
         return res
 
     def update_summary_by_convid(self, summary, convid, uid):
-        sql = """UPDATE "Conversations" SET "summary"=? WHERE  "convID"=? and "uid"=?;"""
+        sql = """UPDATE `Conversations` SET `summary`=%s WHERE  `convID`=%s and `uid`=%s;"""
         res = self.execute_query(sql, (summary, convid, uid))
         return res
 
-    def update_conv_by_convid(self, conv_text, convid, uid):
-        sql = """UPDATE "Conversations" SET "conv"=? WHERE  "convID"=? and "uid"=?;"""
-        res = self.execute_query(sql, (conv_text, convid, uid))
+    def update_conv_by_convid(self, conv_text, convid, uid,character_id):
+        sql = """ 
+        UPDATE `Conversations` 
+        SET `conv`=%s ,`character_id`=%s
+        WHERE  `convID`=%s and `uid`=%s;"""
+        res = self.execute_query(sql, (conv_text, character_id,convid, uid))
         return res
 
     def get_conv_by_convid(self, convid, uid):
-        sql = """SELECT "convID", "conv" FROM "Conversations" WHERE  "convID"=? and "uid"=?;"""
+        sql = """ SELECT `convID`, `conv` FROM `Conversations` WHERE  `convID`=%s and `uid`=%s;"""
         res = self.fetch_all(sql, (convid, uid))
         return res
 
     def generate_convid(self, uid, summary):
         try:
-            sql = """INSERT INTO "Conversations" ("uid", "summary") VALUES (?, ?);"""
+            sql = """ INSERT INTO `Conversations` (`uid`, `summary`) VALUES (%s, %s);"""
             cursor = self.connection.cursor()
             cursor.execute(sql, (uid, summary))
             self.connection.commit()
@@ -165,19 +181,20 @@ class ConvService(Database):
 
 class AudioService(Database):
     def insert_audio(self, uid, filename, mime_type, prompts_text, text, audio_data):
-        query = """INSERT INTO "audio_files" ("uid", "file_name", "mime_type", "prompts_text", "text", "audio_data")  VALUES (?, ?, ?,?,?,?);"""
+        query = """ INSERT INTO `audio_files` (`uid`, `file_name`, `mime_type`, `prompts_text`, `text`, `audio_data`)  VALUES (%s, %s, %s,%s,%s,%s); """
         self.execute_query(query, (uid, filename, mime_type, prompts_text, text, audio_data))
 
     def delete_audio(self, id):
-        # query = """DELETE FROM "audio_files" WHERE  "id"=?;"""
-        query = """UPDATE "audio_files" SET "del_flag"=1 WHERE  "id"=?;"""
+        # query = """DELETE FROM "audio_files" WHERE  "id"=%s;"""
+        query = """ UPDATE `audio_files` SET `del_flag`=1 WHERE  `id`=%s; """
         self.execute_query(query, (id,))
 
     def get_all_by_uid(self, uid):
         sql = """
-        SELECT "id", "uid", "file_name", "mime_type", "prompts_text", "text", "upload_date", "audio_data" 
-        FROM "audio_files" 
-        WHERE  "uid"=? AND "del_flag"!=1;"""
+        SELECT `id`, `uid`, `file_name`, `mime_type`, `prompts_text`, `text`, `upload_date`, `audio_data` 
+        FROM `audio_files` 
+        WHERE  `uid`=%s AND `del_flag`<>1;
+        """
         res = self.fetch_all(sql, (uid,))
 
         res = [{
@@ -187,12 +204,20 @@ class AudioService(Database):
             "mime_type": item[3],
             "prompts_text": item[4],
             "text": item[5],
-            "upload_date": item[6],
+            "upload_date": item[6].strftime('%Y-%m-%d %H:%M:%S'),
         } for item in res]
         return res
 
+    """
+            format_res = []
+        for line in res[0]:
+            _line = [i.strftime('%Y-%m-%d %H:%M:%S') if isinstance(i, datetime) else i for i in line]
+            format_res.append(_line)
+            
+            """
+
     def get_b64data_by_id(self, id):
-        sql = """SELECT  "audio_data" FROM "audio_files" WHERE  "id"=? and "del_flag"<>1;"""
+        sql = """ SELECT  `audio_data` FROM `audio_files` WHERE  `id`=%s and `del_flag`<>1; """
         res = self.fetch_all(sql, (id,))
         audio_base64 = base64.b64encode(res[0][0]).decode('utf-8')
         return audio_base64
@@ -200,43 +225,49 @@ class AudioService(Database):
 
 class CharacterService(Database):
     def insert_character(self, uid, character_name, summery, prompts_texts, text, audio_data, avatar, publish):
-        query = """INSERT INTO "characters" ("uid", "character_name", "summery", "prompts_texts", "text", "audio_data", "avatar", "publish", "del_flag") 
-        VALUES (?, ?, ?, ?, ?, ?, ?,?, 0);"""
+        query = """ 
+        INSERT INTO `characters` 
+        (`uid`, `character_name`, `summery`, `prompts_texts`, `text`, `audio_data`, `avatar`, `publish`, `del_flag`) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s,%s, 0);
+        """
         self.execute_query(query, (uid, character_name, summery, prompts_texts, text, audio_data, avatar, publish))
 
     def delete_character(self, id, uid):
-        # query = """DELETE FROM "audio_files" WHERE  "id"=?;"""
-        query = """UPDATE "characters" SET "del_flag"=1 WHERE  "id"=? AND "uid"==?;"""
+        # query = """DELETE FROM "audio_files" WHERE  "id"=%s;"""
+        query = """ UPDATE `characters` SET `del_flag`=1 WHERE  `id`=%s AND `uid`=%s; """
         self.execute_query(query, (id, uid))
 
     def publish_character(self, id, uid):
-        # query = """DELETE FROM "audio_files" WHERE  "id"=?;"""
-        query = """UPDATE "characters" SET "publish"=1 WHERE  "id"=? AND "uid"=?;"""
+        # query = """DELETE FROM "audio_files" WHERE  "id"=%s;"""
+        query = """UPDATE `characters` SET `publish`=1 WHERE  `id`=%s AND `uid`=%s; """
         self.execute_query(query, (id, uid))
 
 
     def get_prompts_by_id(self, id):
         sql = """
-        SELECT "prompts_texts"
-        FROM "characters"
-        WHERE  id =? """
+        SELECT `prompts_texts`
+        FROM `characters`
+        WHERE  id =%s 
+        """
         res = self.fetch_all(sql, (id,))
         return res[0][0]
 
 
     def get_text_by_id(self, id):
         sql = """
-        SELECT "text"
-        FROM "characters"
-        WHERE  id =? """
+        SELECT `text`
+        FROM `characters`
+        WHERE  id =%s 
+        """
         res = self.fetch_all(sql, (id,))
         return res[0][0]
 
     def get_all_characters_by_uid(self, uid):
         sql = """
-        SELECT "id", "uid", "character_name", "summery", "prompts_texts", "text", "upload_date",  "avatar", "publish" 
-        FROM "characters"
-        WHERE  "uid"=? AND "del_flag"!=1 limit 5;"""
+        SELECT `id`, `uid`, `character_name`, `summery`, `prompts_texts`, `text`, `upload_date`,  `avatar`, `publish` 
+        FROM `characters`
+        WHERE  `uid`=%s AND `del_flag`<>1 limit 5;
+        """
         res = self.fetch_all(sql, (uid,))
 
         res = [{
@@ -246,7 +277,7 @@ class CharacterService(Database):
             "summery": item[3],
             "prompts_texts": json.loads(item[4]),
             "text": item[5],
-            "upload_date": item[6],
+            "upload_date": item[6].strftime('%Y-%m-%d %H:%M:%S'),
             "avatar": item[7],
             "publish": item[8],
         } for item in res]
@@ -254,9 +285,10 @@ class CharacterService(Database):
 
     def get_all_characters_info_by_uid(self, uid):
         sql = """
-        SELECT "id", "uid", "character_name", "summery", "prompts_texts", "text", "upload_date",  "publish" 
-        FROM "characters"
-        WHERE  "uid"=? AND "del_flag"!=1 limit 20;"""
+        SELECT `id`, `uid`, `character_name`, `summery`, `prompts_texts`, `text`, `upload_date`,  `publish` 
+        FROM `characters`
+        WHERE  `uid`=%s AND `del_flag`<>1 limit 20;
+        """
         res = self.fetch_all(sql, (uid,))
 
         res = [{
@@ -266,16 +298,17 @@ class CharacterService(Database):
             "summery": item[3],
             "prompts_texts": json.loads(item[4]),
             "text": item[5],
-            "upload_date": item[6],
+            "upload_date": item[6].strftime('%Y-%m-%d %H:%M:%S'),
             "publish": item[7],
         } for item in res]
         return res
 
     def get_published_characters_info(self,limit,offset):
         sql = """
-        SELECT "id", "uid", "character_name", "summery", "prompts_texts", "text", "upload_date",  "publish" 
-        FROM "characters"
-        WHERE  "publish"=1 AND "del_flag"!=1 limit ? OFFSET ?;"""
+        SELECT `id`, `uid`, `character_name`, `summery`, `prompts_texts`, `text`, `upload_date`,  `publish` 
+        FROM `characters`
+        WHERE  `publish`=1 AND `del_flag`<>1 limit %s OFFSET %s;
+        """
         res = self.fetch_all(sql,(limit,offset))
 
         res = [{
@@ -285,23 +318,23 @@ class CharacterService(Database):
             "summery": item[3],
             "prompts_texts": json.loads(item[4]),
             "text": item[5],
-            "upload_date": item[6],
+            "upload_date": item[6].strftime('%Y-%m-%d %H:%M:%S'),
             "publish": item[7],
         } for item in res]
         return res
 
     def get_character_b64data_by_id(self, id):
-        sql = """SELECT  "audio_data" FROM "characters" WHERE  "id"=? and "del_flag"<>1;"""
+        sql = """ SELECT  `audio_data` FROM `characters` WHERE  `id`=%s and `del_flag`<>1;"""
         res = self.fetch_all(sql, (id,))
         audio_base64 = base64.b64encode(res[0][0]).decode('utf-8')
         return audio_base64
     def get_character_avatar_by_id(self, id):
-        sql = """SELECT  "avatar" FROM "characters" WHERE  "id"=? and "del_flag"<>1;"""
+        sql = """ SELECT  `avatar` FROM `characters` WHERE  `id`=%s and `del_flag`<>1; """
         res = self.fetch_all(sql, (id,))
         audio_base64 = base64.b64encode(res[0][0]).decode('utf-8')
         return audio_base64
     def get_character_audio_by_id(self, id):
-        sql = """SELECT  "audio_data" FROM "characters" WHERE  "id"=? and "del_flag"<>1;"""
+        sql = """ SELECT  `audio_data` FROM `characters` WHERE  `id`=%s and `del_flag`<>1; """
         res = self.fetch_all(sql, (id,))
         return res[0][0]
 
@@ -453,10 +486,10 @@ if __name__ == "__main__":
     db = Database()
 
     # 创建表
-    db.create_table(create_users_table)
-    db.create_table(create_credits_table)
-    db.create_table(create_conversations_table)
-    db.create_table(create_chat_records_table)
+    # db.create_table(create_users_table)
+    # db.create_table(create_credits_table)
+    # db.create_table(create_conversations_table)
+    # db.create_table(create_chat_records_table)
 
     # db.execute_query()
 
@@ -467,8 +500,8 @@ if __name__ == "__main__":
 
     # user_service.insert_user("admin","123456","admin@qq.com")
 
-    # a =  user_service.login_user("admin","123456")
-    # print(a )
+    a =  user_service.login_user("admin","123456")
+    print(a )
 
     # res = user_service.get_uid_by_uname("admin")
     # print(res)
@@ -483,7 +516,7 @@ if __name__ == "__main__":
     # print(cs.find_msg_by_convid(1))
     # print(cs.get_all_conversation_by_uid(3))
 
-    # print(cs.generate_convid(3,""))
+    print(cs.generate_convid(3,""))
     # print(cs.update_summary_by_convid("bbb",4,3))
 
     # print(cs.get_conv_by_convid(4,3))
@@ -499,6 +532,8 @@ if __name__ == "__main__":
 
     ccss = CharacterService()
 
+    print(ccss.get_all_characters_info_by_uid(3))
+
     # print(ccss.get_all_characters_info_by_uid(3))
     #
     # file2 = open(r"D:\projects\pythonproject\YmirAI\assert\85px-yixian.jpg","rb")
@@ -510,4 +545,4 @@ if __name__ == "__main__":
     # ]
     # ccss.insert_character(3,"逸仙-test","测试一线",prompts_texts=json.dumps(prompts_text),text=prompt_text,audio_data=file.read(),avatar=file2.read(),publish=0)
 
-    _test_insert_character()
+    # _test_insert_character()

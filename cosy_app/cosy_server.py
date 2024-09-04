@@ -418,7 +418,7 @@ def get_voice_and_save_conv():
         if uid is None: return response_entity(401, f'未授权')
 
         db = ConvService()
-        db.update_conv_by_convid(json.dumps(conv), conv_id, uid)
+        db.update_conv_by_convid(json.dumps(conv), conv_id, uid,character_id)
 
         bot_message = conv[len(conv) - 1]["speeches"][speeches_id]
 
@@ -429,7 +429,7 @@ def get_voice_and_save_conv():
             conv[len(conv) - 1]["voice"].append(url)
         else:
             conv[len(conv) - 1]["voice"] = [url]
-        db.update_conv_by_convid(json.dumps(conv), conv_id, uid)
+        db.update_conv_by_convid(json.dumps(conv), conv_id, uid,character_id)
 
         return response_entity(data=conv)
     except Exception as e:
