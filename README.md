@@ -55,32 +55,51 @@ Demo演示
 - [ ] 其他
 
  
-# 项目部署
+## 部署文档
+以下部署文档在ubuntu22.04 cuda12.0上通过测试，至少需要`11G`显存。如果需要良好体验，至少需要`24GB`现存。
++ ubuntu/linux 
++ nvidia-cuda 12.0/12.2
++ python 3.10
++ RTX 2080ti 11GB or higher
+
+### 一、前端
+1. 部署nginx
+2. 修改配置为服务器ip地址
+3. 将dist资源放到nginx.conf指定的dist路径下
+打开ip:端口号，可以看到前端页面已经部署好了。注意此时没有部署后端，因此还无法使用。
+### 二、后端部署
+后端由两部分组成。第一是需要启动一个`2.1 大模型服务`，第二是需要克隆并`2.2 启动本项目`。
+
+***2.1 大模型服务***
+这里以`Qwen2-7B-Chat-GPTQ-Int4`为例，也可以使用其他后端模型。只要符合Openai API的规范（用vllm启动的模型都可以）.
+如果显存低于`24GB`，那么应该使用更小的模型。例如`Qwen2-1.5B-Chat-GPTQ-Int4`
+1. 克隆一个大模型项目
+2. 安装vllm依赖`pip install vllm`
+3. 启动模型，以qwen7B为例
+   ```commandline
+   python  -m vllm.entrypoints.openai.api_server  \
+   --model /home/wuxiaowei/pretrining/fastchat/Qwen2-7B-Instruct-GPTQ-Int4  \
+   --port 8216 --host 0.0.0.0  \
+   --max-model-len 16000  --served-model-name Qwen2-7B-Instruct-GPTQ-Int4   \
+   --tensor-parallel-size 1  --quantization gptq \
+   --gpu-memory-utilization 0.7
+   ```
+***2.2 启动本项目***
 1. 下载[CosyVoice](https://github.com/FunAudioLLM/CosyVoice)项目的模型`CosyVoice-300M-Instruct` 和`CosyVoice-ttsfrd`,【[CosyVoice](https://github.com/FunAudioLLM/CosyVoice)】
 2. 将模型丢尽项目文件夹`YmirAI/cosy_app/pretrained_models/.`
  + 例如[CosyVoice-300M-xxx](cosy_app/pretrained_models/CosyVoice-300M-Instruct)
-```commandline
-|- YmirAI/
-    |- cosy_app/
-        |- pretrained_models/
-            |- CosyVoice-300M-Instruct *
-        |- cosy_server.py
-        |- ...
-```
-3. 启动qwen2-7b大模型
-```commandline
-python  -m vllm.entrypoints.openai.api_server  \
---model /home/wuxiaowei/pretrining/fastchat/Qwen2-7B-Instruct-GPTQ-Int4  \
---port 8216 --host 0.0.0.0  \
---max-model-len 16000  --served-model-name Qwen2-7B-Instruct-GPTQ-Int4   \
---tensor-parallel-size 1  --quantization gptq \
---gpu-memory-utilization 0.7
-```
-4. 启动项目
-```commandline
-cd CosyVoice/YmirAI
-python cosy_server.py
-```
+   ```commandline
+   |- YmirAI/
+       |- cosy_app/
+           |- pretrained_models/
+               |- CosyVoice-300M-Instruct *
+               |- CosyVoice-ttsfrd *
+           |- cosy_server.py
+           |- ...
+   ```
+3. 安装依赖`pip install -r r.txt`
+4. 启动项目`nohup python cosy_server.py >log.log 2>&1 &`
+5. 查看日志`tail -f log.log`，Ctrl + C 退出
 
 # 体验地址
 + 如果需要体验地址，请加入我的微信群私信我。纯为爱发电，真顶不住黑客攻击和网络安全小伙伴压力测试。

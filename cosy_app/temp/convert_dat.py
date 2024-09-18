@@ -39,10 +39,10 @@ def loadjson(file_path):
 
 
 # 示例用法
-data1 = loadjson('closure-talk-2024-07-14-14-11-22.json')
+data1 = loadjson('datasets/closure-talk-2024-07-14-14-11-22.json')
 
-data2 = loadjson('closure-talk-2024-07-25-12-30-53.json')
-data3 = loadjson('closure-talk-2024-08-05-12-40-41.json')
+data2 = loadjson('datasets/closure-talk-2024-07-25-12-30-53.json')
+data3 = loadjson('datasets/closure-talk-2024-08-05-12-40-41.json')
 
 datas = [data1, data2, data3]
 
@@ -62,5 +62,7 @@ if __name__ == '__main__':
                     context.append(f"({content})")
                 else:
                     context.append(f"分析员: {content}")
+
+        context.append("\n\n")
 
         print("\n".join(context))
